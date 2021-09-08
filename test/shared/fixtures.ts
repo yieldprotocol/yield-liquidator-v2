@@ -49,8 +49,14 @@ import { USDCMock } from '../../typechain/USDCMock'
 import { LadleWrapper } from '../../src/ladleWrapper'
 import { getLastVaultId } from '../../src/helpers'
 
-import { ethers, waffle } from 'hardhat'
+import hre, { ethers, network, waffle } from 'hardhat'
+import { parseEther } from "ethers/lib/utils"
 const { deployContract } = waffle
+
+const DAI_ward = "0x9759A6Ac90977b93B58547b4A71c78317f391A28";
+const DAI_abi = require("./DAI.json");
+const WETH_abi = require("./WETH.json");
+const ERC20_abi = require("./ERC20Mock.json");
 
 export class YieldEnvironment {
   owner: SignerWithAddress
@@ -199,7 +205,7 @@ export class YieldEnvironment {
       await owner.getAddress()
     ) // Only test environment
 
-    await asset.mint(await owner.getAddress(), WAD.mul(100000))
+    // await asset.mint(await owner.getAddress(), WAD.mul(100000))
 
     return join
   }
@@ -235,8 +241,19 @@ export class YieldEnvironment {
 
     // ==== Mocks ====
 
-    const weth = (await deployContract(owner, WETH9MockArtifact, [])) as WETH9Mock
-    const dai = (await deployContract(owner, DAIMockArtifact, [])) as DAIMock
+    // const weth = (await deployContract(owner, WETH9MockArtifact, [])) as WETH9Mock
+    const weth = <WETH9Mock>(await ethers.getContractAt(WETH_abi, "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", owner));
+    // const dai = (await deployContract(owner, DAIMockArtifact, [])) as DAIMock
+    const dai = <DAIMock>(await ethers.getContractAt(DAI_abi, "0x6b175474e89094c44da98b954eedeac495271d0f", await hre.ethers.getSigner(DAI_ward)));
+    await network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [DAI_ward],
+    });
+    await network.provider.send("hardhat_setBalance", [
+      DAI_ward,
+      parseEther("10").toHexString(),
+    ]);
+
     const usdc = (await deployContract(owner, USDCMockArtifact, [])) as USDCMock
 
     // For each asset id passed as an argument, we create a Mock ERC20.
