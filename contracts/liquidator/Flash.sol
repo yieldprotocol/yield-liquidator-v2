@@ -971,11 +971,31 @@ interface IWitch {
     function payAll(bytes12 vaultId, uint128 min) external returns (uint256 ink);
 
     function ladle() external returns (ILadle);
+
+    function cauldron() external returns (ICauldron);
+
+    function auctions(bytes12 vaultId) external returns (address owner, uint32 start);
+
+    function ilks(bytes6 ilkId) external returns (uint32 duration, uint64 initialOffer, uint128 dust);
+
+}
+
+interface ICauldron {
+    function spotOracles(bytes6 baseId, bytes6 ilkId) external returns (address oracle, uint32 ratio);
+
+    function level(bytes12 vaultId)
+        external
+        returns (int256);
+
+    function debtToBase(bytes6 seriesId, uint128 art)
+        external
+        returns (uint128 base);
 }
 
 contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
     ISwapRouter public immutable swapRouter;
     IWitch private witch;
+    ICauldron private cauldron;
     address private owner;
 
     constructor(
@@ -989,6 +1009,28 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
         owner = _owner;
         swapRouter = _swapRouter;
         witch = _witch;
+        cauldron = _witch.cauldron();
+    }
+
+    function collateralToDebtRatio(bytes12 vaultId, bytes6 seriesId, bytes6 baseId, bytes6 ilkId, uint128 art) public 
+    returns (uint256) {
+        if (art == 0) {
+            return 0;
+        }
+        int256 level = cauldron.level(vaultId);
+        uint128 accrued_debt = cauldron.debtToBase(seriesId, art);
+        (, uint32 ratio_u32) = cauldron.spotOracles(baseId, ilkId);
+
+        level = (level * 1e18 / int256(int128(accrued_debt))) + int256(uint256(ratio_u32)) * 1e12;
+        require(level >= 0, "level is negative");
+        return uint256(level);
+    }
+
+    function isAtMinimalPrice(bytes12 vaultId, bytes6 ilkId) public returns (bool) {
+        (, uint32 auction_start) = witch.auctions(vaultId);
+        (uint32 duration, , ) = witch.ilks(ilkId);
+        uint256 elapsed = uint32(block.timestamp) - auction_start;
+        return elapsed >= duration;
     }
 
     /// @param fee0 The fee from calling flash for token0

@@ -96,9 +96,12 @@ async function main() {
 
     console.log("spotSource", spotSource.address);
     console.log("spotOracle", spotOracle.address);
+    console.log("vaultId", vaultId);
     console.log("WETH: ", ETH);
     console.log("DAI: ", DAI);
-    await spotSource.set(WAD.mul(1).div(2)); // take the vault under water
+
+    await cauldron.setSpotOracle(baseId, ilkId, spotOracle.address, 150 * 10000);
+    // await spotSource.set(WAD.mul(1).div(2)); // take the vault under water
 }
 
 main()
