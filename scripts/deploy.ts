@@ -10,8 +10,9 @@ import { CompoundMultiOracle } from '../typechain/CompoundMultiOracle'
 import { ISourceMock } from '../typechain/ISourceMock'
 
 import { YieldEnvironment } from '../test/shared/fixtures'
-const { WAD, THREE_MONTHS, ETH, DAI, USDC } = constants
-import { RATE } from '../src/constants'
+const { WAD } = constants
+
+import { RATE, ETH, DAI } from '../src/constants'
 
 import {readFileSync} from 'fs'
 import {resolve} from 'path'
