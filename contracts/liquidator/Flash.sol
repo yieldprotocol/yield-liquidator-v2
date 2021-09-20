@@ -2,6 +2,7 @@
 
 pragma solidity >=0.8.6;
 
+
 // File @uniswap/v3-core/contracts/interfaces/pool/IUniswapV3PoolImmutables.sol@v1.0.0
 
 // 
@@ -976,7 +977,7 @@ interface IWitch {
 
     function auctions(bytes12 vaultId) external returns (address owner, uint32 start);
 
-    function ilks(bytes6 ilkId) external returns (uint32 duration, uint64 initialOffer, uint128 dust);
+    function ilks(bytes6 ilkId) external returns (bool initialized, uint32 duration, uint64 initialOffer, uint128 dust);
 
 }
 
@@ -1028,7 +1029,7 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
 
     function isAtMinimalPrice(bytes12 vaultId, bytes6 ilkId) public returns (bool) {
         (, uint32 auction_start) = witch.auctions(vaultId);
-        (uint32 duration, , ) = witch.ilks(ilkId);
+        (, uint32 duration, , ) = witch.ilks(ilkId);
         uint256 elapsed = uint32(block.timestamp) - auction_start;
         return elapsed >= duration;
     }
@@ -1075,7 +1076,6 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
         // if profitable pay profits to payer
         if (debtRecovered > debtToReturn) {
             uint256 profit = debtRecovered - debtToReturn;
-
             TransferHelper.safeApprove(decoded.debt, address(this), profit);
             pay(decoded.debt, address(this), owner, profit);
         }
@@ -1088,6 +1088,7 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
         bytes12 vaultId;
         bytes6 collateralId;
         bytes6 debtId;
+        bytes6 seriesId;
     }
 
     struct FlashCallbackData {
@@ -1114,12 +1115,10 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
         });
         IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 
-        pool.flash(
-            address(this),
-            ordered ? 0 : params.debtAmount,
-            ordered ? params.debtAmount : 0,
-            abi.encode(
-                FlashCallbackData({
+		params.debtAmount = cauldron.debtToBase(params.	seriesId, uint128(params.debtAmount));
+
+
+        FlashCallbackData memory args = FlashCallbackData({
                     collateral: params.collateral,
                     debt: params.debt,
                     debtAmount: params.debtAmount,
@@ -1127,7 +1126,14 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
                     collateralJoin: witch.ladle().joins(params.collateralId),
                     debtJoin: witch.ladle().joins(params.debtId),
                     poolKey: poolKey
-                })
+                });
+
+        pool.flash(
+            address(this),
+            ordered ? 0 : params.debtAmount,
+            ordered ? params.debtAmount : 0,
+            abi.encode(
+                args
             )
         );
     }
