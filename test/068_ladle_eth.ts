@@ -2,6 +2,7 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signer-wit
 
 import { constants } from '@yield-protocol/utils-v2'
 const { WAD } = constants
+import { ETH } from '../src/constants'
 
 import { Cauldron } from '../typechain/Cauldron'
 import { Join } from '../typechain/Join'
@@ -43,7 +44,7 @@ describe('Ladle - eth', function () {
   const baseId = ethers.utils.hexlify(ethers.utils.randomBytes(6))
   const ilkId = ethers.utils.hexlify(ethers.utils.randomBytes(6))
   const seriesId = ethers.utils.hexlify(ethers.utils.randomBytes(6))
-  const ethId = ethers.utils.formatBytes32String('ETH').slice(0, 14)
+  const ethId = ETH
 
   let ethVaultId: string
   let ilkVaultId: string
@@ -60,7 +61,8 @@ describe('Ladle - eth', function () {
   })
 
   it('pouring without sending ETH first reverts', async () => {
-    await expect(ladle.pour(ethVaultId, owner, WAD, 0)).to.be.revertedWith('ERC20: Insufficient balance')
+    await weth.approve(wethJoin.address, 0) // Revert the permission that was given during initialization
+    await expect(ladle.pour(ethVaultId, owner, WAD, 0)).to.be.revertedWith('ERC20: Insufficient approval')
   })
 
   it('users can transfer ETH then pour', async () => {
