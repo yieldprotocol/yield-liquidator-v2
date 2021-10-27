@@ -953,16 +953,28 @@ library PoolAddress {
     }
 }
 
-interface IJoin {
-    /// @dev asset managed by this contract
-    function asset() external view returns (address);
+library DataTypes {
+    struct Series {
+        IFYToken fyToken;                                               // Redeemable token for the series.
+        bytes6  baseId;                                                 // Asset received on redemption.
+        uint32  maturity;                                               // Unix time at which redemption becomes possible.
+    }
 
-    /// @dev Add tokens to this contract.
-    function join(address user, uint128 wad) external returns (uint128);
+    struct Vault {
+        address owner;
+        bytes6  seriesId;                                                // Each vault is related to only one series, which also determines the underlying.
+        bytes6  ilkId;                                                   // Asset accepted as collateral
+    }
 
-    /// @dev Remove tokens to this contract.
-    function exit(address user, uint128 wad) external returns (uint128);
+    struct Balances {
+        uint128 art;                                                     // Debt amount
+        uint128 ink;                                                     // Collateral amount
+    }
 }
+
+interface IJoin { }
+
+interface IFYToken { }
 
 interface ILadle {
     function joins(bytes6) external view returns (IJoin);
@@ -978,36 +990,48 @@ interface IWitch {
     function auctions(bytes12 vaultId) external returns (address owner, uint32 start);
 
     function ilks(bytes6 ilkId) external returns (bool initialized, uint32 duration, uint64 initialOffer, uint128 dust);
-
 }
 
 interface ICauldron {
+    function vaults(bytes12 vault) external view returns (DataTypes.Vault memory);
+
+    function series(bytes6 seriesId) external view returns (DataTypes.Series memory);
+
+    function assets(bytes6 assetsId) external view returns (address);
+
+    function balances(bytes12 vault) external view returns (DataTypes.Balances memory);
+
     function spotOracles(bytes6 baseId, bytes6 ilkId) external returns (address oracle, uint32 ratio);
 
-    function level(bytes12 vaultId)
-        external
-        returns (int256);
+    function level(bytes12 vaultId) external returns (int256);
 
-    function debtToBase(bytes6 seriesId, uint128 art)
-        external
-        returns (uint128 base);
+    function debtToBase(bytes6 seriesId, uint128 art) external returns (uint128 base);
 }
 
 contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
+    using TransferHelper for address;
+
     ISwapRouter public immutable swapRouter;
     IWitch private witch;
     ICauldron private cauldron;
     address private owner;
 
+    struct FlashCallbackData {
+        address initiator;
+        bytes12 vaultId;
+        address base;
+        address collateral;
+        uint256 baseLoan;
+        address baseJoin;
+        PoolAddress.PoolKey poolKey;
+    }
+
     constructor(
-        address _owner,
         ISwapRouter _swapRouter,
         address _factory,
         address _WETH9,
         IWitch _witch
     ) PeripheryImmutableState(_factory, _WETH9) {
-
-        owner = _owner;
         swapRouter = _swapRouter;
         witch = _witch;
         cauldron = _witch.cauldron();
@@ -1047,19 +1071,21 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
         require(fee0 == 0 || fee1 == 0, 'fee0 == 0 || fee1 == 0');
         uint256 fee = fee0 + fee1;
 
+        // decode and verify
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
-        CallbackValidation.verifyCallback(factory, decoded.poolKey);
+        CallbackValidation.verifyCallback(factory, decoded.poolKey); // TODO: Do we really need this?
 
-        TransferHelper.safeApprove(decoded.debt, address(decoded.debtJoin), decoded.debtAmount);
-        uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);
+        // liquidate the vault
+        decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
+        uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);     
 
-        uint256 debtToReturn = decoded.debtAmount + fee;
-        TransferHelper.safeApprove(decoded.collateral, address(swapRouter), collateralReceived);
-
+        // sell the collateral
+        uint256 debtToReturn = decoded.baseLoan + fee;
+        decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
         uint256 debtRecovered = swapRouter.exactInputSingle(
             ISwapRouter.ExactInputSingleParams({
                 tokenIn: decoded.collateral,
-                tokenOut: decoded.debt,
+                tokenOut: decoded.base,
                 fee: 500,  // can't use the same fee as the flash loan
                            // because of reentrancy protection
                 recipient: address(this),
@@ -1069,69 +1095,58 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
                 sqrtPriceLimitX96: 0
             })
         );
-
-        TransferHelper.safeApprove(decoded.debt, address(this), debtToReturn);
-        pay(decoded.debt, address(this), msg.sender, debtToReturn);
+        // TODO: Swap twice, once `exactOutputSingle` to repay theflash loan,
+        // and another to swap the remainder to ETH as profits
 
         // if profitable pay profits to payer
         if (debtRecovered > debtToReturn) {
             uint256 profit = debtRecovered - debtToReturn;
-            TransferHelper.safeApprove(decoded.debt, address(this), profit);
-            pay(decoded.debt, address(this), owner, profit);
+            decoded.base.safeApprove(address(this), profit);
+            pay(decoded.base, address(this), decoded.initiator, profit);
         }
+
+        // repay flash loan
+        decoded.base.safeApprove(address(this), debtToReturn); // TODO: Does this do anything?
+        pay(decoded.base, address(this), msg.sender, debtToReturn);
     }
 
-    struct FlashParams {
-        address collateral;
-        address debt;
-        uint256 debtAmount;
-        bytes12 vaultId;
-        bytes6 collateralId;
-        bytes6 debtId;
-        bytes6 seriesId;
-    }
-
-    struct FlashCallbackData {
-        address collateral;
-        address debt;
-        uint256 debtAmount;
-        bytes12 vaultId;
-        IJoin collateralJoin;
-        IJoin debtJoin;
-        PoolAddress.PoolKey poolKey;
-    }
-
-    /// @param params The parameters necessary for flash and the callback, passed in as FlashParams
-    /// @notice Calls the pools flash function with data needed in `uniswapV3FlashCallback`
-    function initFlash(FlashParams memory params) external {
+    /// @param vaultId The vault to liquidate
+    /// @notice Liquidates a vault with help from a Uniswap v3 flash loan
+    function liquidate(bytes12 vaultId) external {
         uint24 poolFee = 3000; // 0.3%
 
+        DataTypes.Vault memory vault = cauldron.vaults(vaultId);
+        DataTypes.Balances memory balances = cauldron.balances(vaultId);
+        DataTypes.Series memory series = cauldron.series(vault.seriesId);
+        address base = cauldron.assets(series.baseId);
+        address collateral = cauldron.assets(vault.ilkId);
+		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, uint128(balances.art));
+
         // tokens in PoolKey must be ordered
-        bool ordered = (params.collateral < params.debt);
+        bool ordered = (collateral < base);
         PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({
-            token0: ordered ? params.collateral : params.debt,
-            token1: ordered ? params.debt : params.collateral,
+            token0: ordered ? collateral : base,
+            token1: ordered ? base : collateral,
             fee: poolFee
         });
-        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey)); // TODO: We could probably skip this, since the contract is not expected to hold funds between transactions
 
-		params.debtAmount = cauldron.debtToBase(params.	seriesId, uint128(params.debtAmount));
-
-
+        // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({
-                    collateral: params.collateral,
-                    debt: params.debt,
-                    debtAmount: params.debtAmount,
-                    vaultId: params.vaultId,
-                    collateralJoin: witch.ladle().joins(params.collateralId),
-                    debtJoin: witch.ladle().joins(params.debtId),
-                    poolKey: poolKey
-                });
+            initiator: msg.sender,
+            vaultId: vaultId,
+            base: base,
+            collateral: collateral,
+            baseLoan: baseLoan,
+            baseJoin: address(witch.ladle().joins(series.baseId)),
+            poolKey: poolKey
+        });
 
+        // initiate flash loan, with the liquidation logic embedded in the flash loan callback
         pool.flash(
             address(this),
-            ordered ? 0 : params.debtAmount,
-            ordered ? params.debtAmount : 0,
+            ordered ? 0 : baseLoan,
+            ordered ? baseLoan : 0,
             abi.encode(
                 args
             )
