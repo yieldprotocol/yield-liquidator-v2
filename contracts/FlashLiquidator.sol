@@ -1012,12 +1012,11 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
     using TransferHelper for address;
 
     ISwapRouter public immutable swapRouter;
-    IWitch private witch;
-    ICauldron private cauldron;
-    address private owner;
+    IWitch public immutable witch;
+    ICauldron public immutable cauldron;
+    address public immutable recipient;
 
     struct FlashCallbackData {
-        address initiator;
         bytes12 vaultId;
         address base;
         address collateral;
@@ -1030,11 +1029,13 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         ISwapRouter _swapRouter,
         address _factory,
         address _WETH9,
-        IWitch _witch
+        IWitch _witch,
+        address _recipient
     ) PeripheryImmutableState(_factory, _WETH9) {
         swapRouter = _swapRouter;
         witch = _witch;
         cauldron = _witch.cauldron();
+        recipient = _recipient;
     }
 
     function collateralToDebtRatio(bytes12 vaultId, bytes6 seriesId, bytes6 baseId, bytes6 ilkId, uint128 art) public 
@@ -1098,11 +1099,11 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         // TODO: Swap twice, once `exactOutputSingle` to repay theflash loan,
         // and another to swap the remainder to ETH as profits
 
-        // if profitable pay profits to payer
+        // if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
             uint256 profit = debtRecovered - debtToReturn;
             decoded.base.safeApprove(address(this), profit);
-            pay(decoded.base, address(this), decoded.initiator, profit);
+            pay(decoded.base, address(this), recipient, profit);
         }
 
         // repay flash loan
@@ -1133,7 +1134,6 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
 
         // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({
-            initiator: msg.sender,
             vaultId: vaultId,
             base: base,
             collateral: collateral,
