@@ -1008,7 +1008,7 @@ interface ICauldron {
     function debtToBase(bytes6 seriesId, uint128 art) external returns (uint128 base);
 }
 
-contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
+contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
     using TransferHelper for address;
 
     ISwapRouter public immutable swapRouter;
