@@ -1026,11 +1026,11 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
     }
 
     constructor(
+        address _recipient
         ISwapRouter _swapRouter,
         address _factory,
         address _WETH9,
         IWitch _witch,
-        address _recipient
     ) PeripheryImmutableState(_factory, _WETH9) {
         swapRouter = _swapRouter;
         witch = _witch;
