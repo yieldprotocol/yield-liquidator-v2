@@ -1074,7 +1074,7 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
 
         // decode and verify
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
-        CallbackValidation.verifyCallback(factory, decoded.poolKey); // TODO: Do we really need this?
+        CallbackValidation.verifyCallback(factory, decoded.poolKey);
 
         // liquidate the vault
         decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
@@ -1096,8 +1096,6 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
                 sqrtPriceLimitX96: 0
             })
         );
-        // TODO: Swap twice, once `exactOutputSingle` to repay theflash loan,
-        // and another to swap the remainder to ETH as profits
 
         // if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
@@ -1130,7 +1128,7 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
             token1: ordered ? base : collateral,
             fee: poolFee
         });
-        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey)); // TODO: We could probably skip this, since the contract is not expected to hold funds between transactions
+        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 
         // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({
