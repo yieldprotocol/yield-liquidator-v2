@@ -1,0 +1,21 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "bytes6",
+        "name": "",
+        "type": "bytes6"
+      }
+    ],
+    "name": "joins",
+    "outputs": [
+      {
+        "internalType": "contract IJoin",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
