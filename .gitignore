@@ -14,6 +14,7 @@ cache
 artifacts
 node_modules/
 abi/
+abis/
 output/
 typechain/
 deployments/

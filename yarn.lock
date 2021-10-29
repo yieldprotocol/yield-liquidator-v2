@@ -2485,6 +2485,11 @@
   resolved "https://registry.yarnpkg.com/@yield-protocol/vault-v2/-/vault-v2-0.11.0-rc8.tgz#f6ba014ed29941ad0d14970b0f9d8642e396bfcd"
   integrity sha512-OmYaDqd72oRd67ozC3q57YkxOeQDIIfL9ysPYwTKWSJ6Ss8+jceVZrrziPeE58Usdi/OctsqohYRFZSbqFS8Fw==
 
+"@yield-protocol/yieldspace-interfaces@2.3.0-rc7":
+  version "2.3.0-rc7"
+  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-interfaces/-/yieldspace-interfaces-2.3.0-rc7.tgz#8931c5de3cd80dd1cdb4dcf900bd7c465878d216"
+  integrity sha512-7pExkzMw8pikGNAdIyKskMFZ9lYWCv0hfzqnG+gW2mOp0y6YMsyKGpVR01Qi2vz4kn1Xthg9CV7EyPVFU1iiEA==
+
 abab@^2.0.0:
   version "2.0.5"
   resolved "https://registry.yarnpkg.com/abab/-/abab-2.0.5.tgz#c0b678fb32d60fc1219c784d6a826fe385aeb79a"
@@ -2664,11 +2669,6 @@ ansi-escapes@^4.2.1, ansi-escapes@^4.3.0:
   integrity sha512-gKXj5ALrKWQLsYG9jlTRmR/xKluxHV+Z9QEwNIgCfM1/uwPMCuzVVnh5mwTd+OuBZcwSIMbqssNWRm1lE51QaQ==
   dependencies:
     type-fest "^0.21.3"
-
-ansi-regex@*:
-  version "6.0.1"
-  resolved "https://registry.yarnpkg.com/ansi-regex/-/ansi-regex-6.0.1.tgz#3183e38fae9a65d7cb5e53945cd5897d0260a06a"
-  integrity sha512-n5M855fKb2SsfMIiFFoVrABHJC8QtHwVx+mHWP3QcEqBHYienj5dHSgjbxtC0WEZXYt4wcD6zrQElDPhFuZgfA==
 
 ansi-regex@^2.0.0:
   version "2.1.1"
@@ -5142,6 +5142,11 @@ drbg.js@^1.0.1:
     browserify-aes "^1.0.6"
     create-hash "^1.1.2"
     create-hmac "^1.1.4"
+
+dss-interfaces@0.1.1:
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/dss-interfaces/-/dss-interfaces-0.1.1.tgz#2ed72af0f206b5a4a6968262d42ceeefe1af9a30"
+  integrity sha512-SaTUptK+0jHsgaywKLDZBZi5L6d154b62ujFlECmY7bWPLp+7JmoK502xfjh8wtkOI5T3a7vhnEYTJ4m36uNhQ==
 
 duplexer3@^0.1.4:
   version "0.1.4"
@@ -7797,7 +7802,7 @@ imul@^1.0.0:
   resolved "https://registry.yarnpkg.com/imul/-/imul-1.0.1.tgz#9d5867161e8b3de96c2c38d5dc7cb102f35e2ac9"
   integrity sha1-nVhnFh6LPelsLDjV3HyxAvNeKsk=
 
-imurmurhash@*, imurmurhash@^0.1.4:
+imurmurhash@^0.1.4:
   version "0.1.4"
   resolved "https://registry.yarnpkg.com/imurmurhash/-/imurmurhash-0.1.4.tgz#9218b9b2b928a238b13dc4fb6b6d576f231453ea"
   integrity sha1-khi5srkoojixPcT7a21XbyMUU+o=
