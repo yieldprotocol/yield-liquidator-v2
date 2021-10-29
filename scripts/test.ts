@@ -13,7 +13,7 @@ import { FlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
     const cauldronAddress = '0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867'
     const witchAddress = '0x53C3760670f6091E1eC76B4dd27f73ba4CAd5061'
     const timelockAddress = '0x3b870db67a45611CF4723d44487EAF398fAc51E3'
-    const flashLiquidatorAddress = '0x51A1ceB83B83F1985a81C295d1fF28Afef186E02' // Check for each test
+    const flashLiquidatorAddress = '0xB9f14f36b33E43b1E913dfeb14949B78Af3cEd36'
     const recipient = '0x3b43618b2961D5fbDf269A72ACcb225Df70dCb48'
 
     const ETH = ethers.utils.formatBytes32String('00').slice(0, 14)
