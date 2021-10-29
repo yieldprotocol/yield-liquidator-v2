@@ -33,6 +33,6 @@ const { deployContract } = waffle
         witch,
     ]
     let flashLiquidator = (await deployContract(ownerAcc, FlashLiquidatorArtifact, args)) as FlashLiquidator
-    console.log(`[FlashLiquidator, '${flashLiquidator.address}'],`)
+    console.log(`FlashLiquidator deployed at ${flashLiquidator.address}`)
     console.log(`npx hardhat verify --network ${network.name} ${flashLiquidator.address} ${args.join(' ')}`)
 })()
