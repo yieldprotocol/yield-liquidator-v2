@@ -76,7 +76,7 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         bytes calldata data
     ) external override {
         // we only borrow 1 token
-        require(fee0 == 0 || fee1 == 0, 'fee0 == 0 || fee1 == 0');
+        require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
         uint256 fee = fee0 + fee1;
 
         // decode and verify
