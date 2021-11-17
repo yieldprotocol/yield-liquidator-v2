@@ -977,7 +977,7 @@ interface IWitch {
 
     function auctions(bytes12 vaultId) external returns (address owner, uint32 start);
 
-    function ilks(bytes6 ilkId) external returns (bool initialized, uint32 duration, uint64 initialOffer, uint128 dust);
+    function ilks(bytes6 ilkId) external returns (uint32 duration, uint64 initialOffer);
 
 }
 
@@ -1029,7 +1029,7 @@ contract PairFlash is IUniswapV3FlashCallback, PeripheryImmutableState, Peripher
 
     function isAtMinimalPrice(bytes12 vaultId, bytes6 ilkId) public returns (bool) {
         (, uint32 auction_start) = witch.auctions(vaultId);
-        (, uint32 duration, , ) = witch.ilks(ilkId);
+        (uint32 duration, ) = witch.ilks(ilkId);
         uint256 elapsed = uint32(block.timestamp) - auction_start;
         return elapsed >= duration;
     }
