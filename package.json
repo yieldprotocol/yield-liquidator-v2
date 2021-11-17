@@ -10,8 +10,8 @@
     "test:deploy": "hardhat deploy --tags DeployTest",
     "coverage": "hardhat coverage",
     "lint:sol": "solhint -f table contracts/*.sol",
-    "lint:ts": "prettier ./test/*.ts --check",
-    "lint:ts:fix": "prettier ./test/*.ts --write",
+    "lint:ts": "prettier ./scripts/*.ts --check",
+    "lint:ts:fix": "prettier ./scripts/*.ts --write",
     "prepublishOnly": "npx tsdx build --tsconfig ./tsconfig-publish.json"
   },
   "devDependencies": {
