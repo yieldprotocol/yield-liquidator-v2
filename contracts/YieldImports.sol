@@ -41,7 +41,7 @@ interface IWitch {
 
     function auctions(bytes12 vaultId) external returns (address owner, uint32 start);
 
-    function ilks(bytes6 ilkId) external returns (bool initialized, uint32 duration, uint64 initialOffer, uint128 dust);
+    function ilks(bytes6 ilkId) external returns (uint32 duration, uint64 initialOffer);
 }
 
 interface ICauldron {

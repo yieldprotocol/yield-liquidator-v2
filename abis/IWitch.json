@@ -47,11 +47,6 @@
     "name": "ilks",
     "outputs": [
       {
-        "internalType": "bool",
-        "name": "initialized",
-        "type": "bool"
-      },
-      {
         "internalType": "uint32",
         "name": "duration",
         "type": "uint32"
@@ -60,11 +55,6 @@
         "internalType": "uint64",
         "name": "initialOffer",
         "type": "uint64"
-      },
-      {
-        "internalType": "uint128",
-        "name": "dust",
-        "type": "uint128"
       }
     ],
     "stateMutability": "nonpayable",
