@@ -62,26 +62,6 @@
         "internalType": "bytes12",
         "name": "vaultId",
         "type": "bytes12"
-      },
-      {
-        "internalType": "bytes6",
-        "name": "seriesId",
-        "type": "bytes6"
-      },
-      {
-        "internalType": "bytes6",
-        "name": "baseId",
-        "type": "bytes6"
-      },
-      {
-        "internalType": "bytes6",
-        "name": "ilkId",
-        "type": "bytes6"
-      },
-      {
-        "internalType": "uint128",
-        "name": "art",
-        "type": "uint128"
       }
     ],
     "name": "collateralToDebtRatio",
@@ -114,11 +94,6 @@
         "internalType": "bytes12",
         "name": "vaultId",
         "type": "bytes12"
-      },
-      {
-        "internalType": "bytes6",
-        "name": "ilkId",
-        "type": "bytes6"
       }
     ],
     "name": "isAtMinimalPrice",

@@ -127,7 +127,8 @@ module.exports = {
       chainId: 31337
     },
     localhost: {
-      chainId: 31337
+      chainId: 31337,
+      timeout: 600000
     },
     kovan: {
       accounts,

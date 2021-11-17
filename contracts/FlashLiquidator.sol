@@ -4,16 +4,17 @@ pragma solidity >=0.8.6;
 
 import "@yield-protocol/utils-v2/contracts/interfaces/IWETH9.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import "@yield-protocol/vault-interfaces/ICauldron.sol";
+import "@yield-protocol/vault-interfaces/IWitch.sol";
 import "./UniswapImports.sol";
-import "./YieldImports.sol";
 
 
 contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
     using TransferHelper for address;
 
     ISwapRouter public immutable swapRouter;
-    IWitch public immutable witch;
     ICauldron public immutable cauldron;
+    IWitch public immutable witch;
     address public immutable recipient;
 
     struct FlashCallbackData {
@@ -38,24 +39,30 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         recipient = _recipient;
     }
 
-    function collateralToDebtRatio(bytes12 vaultId, bytes6 seriesId, bytes6 baseId, bytes6 ilkId, uint128 art) public 
+    function collateralToDebtRatio(bytes12 vaultId) public 
     returns (uint256) {
-        if (art == 0) {
+        DataTypes.Vault memory vault = cauldron.vaults(vaultId);
+        DataTypes.Balances memory balances = cauldron.balances(vaultId);
+        DataTypes.Series memory series = cauldron.series(vault.seriesId);
+
+        if (balances.art == 0) {
             return 0;
         }
+        // The castings below can't overflow
+        int256 accruedDebt = int256(uint256(cauldron.debtToBase(vault.seriesId, balances.art)));
         int256 level = cauldron.level(vaultId);
-        uint128 accrued_debt = cauldron.debtToBase(seriesId, art);
-        (, uint32 ratio_u32) = cauldron.spotOracles(baseId, ilkId);
+        int256 ratio = int256(uint256((cauldron.spotOracles(series.baseId, vault.ilkId)).ratio)) * 1e12; // Convert from 6 to 18 decimals
 
-        level = (level * 1e18 / int256(int128(accrued_debt))) + int256(uint256(ratio_u32)) * 1e12;
+        level = (level * 1e18) / (accruedDebt * ratio);
         require(level >= 0, "level is negative");
         return uint256(level);
     }
 
-    function isAtMinimalPrice(bytes12 vaultId, bytes6 ilkId) public returns (bool) {
-        (, uint32 auction_start) = witch.auctions(vaultId);
+    function isAtMinimalPrice(bytes12 vaultId) public returns (bool) {
+        bytes6 ilkId = (cauldron.vaults(vaultId)).ilkId;
         (uint32 duration, ) = witch.ilks(ilkId);
-        uint256 elapsed = uint32(block.timestamp) - auction_start;
+        (, uint32 auctionStart) = witch.auctions(vaultId);
+        uint256 elapsed = uint32(block.timestamp) - auctionStart;
         return elapsed >= duration;
     }
 
@@ -119,7 +126,7 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         DataTypes.Series memory series = cauldron.series(vault.seriesId);
         address base = cauldron.assets(series.baseId);
         address collateral = cauldron.assets(vault.ilkId);
-		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, uint128(balances.art));
+		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
 
         // tokens in PoolKey must be ordered
         bool ordered = (collateral < base);
