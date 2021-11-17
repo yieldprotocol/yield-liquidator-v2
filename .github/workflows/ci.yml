@@ -30,7 +30,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: yarn lint:ts
-      - run: yarn lint:sol
 
   test:
     runs-on: ubuntu-latest

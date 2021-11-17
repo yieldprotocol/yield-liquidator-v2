@@ -1,29 +1,17 @@
 {
-  "name": "@yield-protocol/vault-v2",
-  "version": "0.11.0-rc0",
-  "description": "Yield Collateralized Debt Engine v2",
+  "name": "@yield-protocol/flash-liquidator",
+  "version": "0.0.1",
+  "description": "Yield Flash Liquidator",
+  "main": "index.js",
   "author": "Yield Inc.",
-  "files": [
-    "contracts/*.sol",
-    "contracts/math/*.sol",
-    "contracts/constants/*.sol",
-    "contracts/oracles/chainlink/*.sol",
-    "contracts/oracles/compound/*.sol",
-    "contracts/oracles/composite/*.sol",
-    "contracts/oracles/uniswap/*.sol",
-    "dist"
-  ],
-  "main": "dist/index.js",
-  "typings": "dist/index.d.ts",
   "scripts": {
-    "build": "rm -rf artifacts typechain && hardhat compile",
-    "test": "yarn build && hardhat test --show-stack-traces",
+    "build": "hardhat compile",
+    "test": "hardhat test",
     "test:deploy": "hardhat deploy --tags DeployTest",
     "coverage": "hardhat coverage",
-    "lint:collisions": "yarn build && hardhat lint:collisions",
-    "lint:sol": "yarn lint:collisions && solhint -f table contracts/*.sol",
-    "lint:ts": "prettier ./test/*.ts --check",
-    "lint:ts:fix": "prettier ./test/*.ts --write",
+    "lint:sol": "solhint -f table contracts/*.sol",
+    "lint:ts": "prettier ./scripts/*.ts --check",
+    "lint:ts:fix": "prettier ./scripts/*.ts --write",
     "prepublishOnly": "npx tsdx build --tsconfig ./tsconfig-publish.json"
   },
   "devDependencies": {
@@ -31,39 +19,44 @@
     "@nomiclabs/hardhat-ethers": "^2.0.1",
     "@nomiclabs/hardhat-etherscan": "^2.1.0",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
+    "@openzeppelin/contracts": "^4.1.0",
     "@truffle/hdwallet-provider": "^1.0.40",
     "@types/mocha": "^8.0.0",
-    "@yield-protocol/utils-v2": "^2.4.2",
-    "@yield-protocol/vault-interfaces": "^2.3.0-rc3",
-    "@yield-protocol/yieldspace-interfaces": "^2.3.0-rc2",
+    "@yield-protocol/utils-v2": "2.4.6",
+    "@yield-protocol/vault-interfaces": "2.3.2",
+    "@yield-protocol/vault-v2": "0.11.0-rc8",
     "chai": "4.2.0",
     "dss-interfaces": "0.1.1",
     "erc3156": "^0.4.8",
     "ethereum-waffle": "^3.2.2",
-    "ethers": "^5.0.0",
-    "hardhat": "^2.2.0",
+    "hardhat": "^2.6.0",
     "hardhat-abi-exporter": "^2.0.3",
     "hardhat-contract-sizer": "^2.0.3",
     "hardhat-deploy": "^0.7.0-beta.44",
     "hardhat-gas-reporter": "^1.0.3",
     "hardhat-typechain": "^0.3.4",
-    "mocha": "^8.3.2",
+    "mocha": "^7.1.0",
     "prettier": "^2.0.5",
     "solhint": "^3.3.3",
     "solidity-coverage": "^0.7.14",
     "ts-node": "^8.10.2",
     "tsdx": "^0.14.1",
-    "typechain": "^4.0.3",
+    "typechain": "^4.0.1",
     "typechain-target-ethers-v5": "^5.0.1",
-    "typescript": "^3.9.7"
+    "typescript": "^3.9.7",
+    "uniswapv3-oracle": "^1.0.0",
+    "yargs": "^17.0.1"
   },
   "repository": {
-    "url": "git+https://github.com/yieldprotocol/vault-v2.git",
+    "url": "git+https://github.com/yieldprotocol/environments-v2.git",
     "type": "git"
   },
   "bugs": {
-    "url": "https://github.com/yieldprotocol/vault-v2/issues"
+    "url": "https://github.com/yieldprotocol/environments-v2/issues"
   },
   "license": "GPL-3.0-or-later",
-  "homepage": "https://github.com/yieldprotocol/vault-v2#readme"
+  "homepage": "https://github.com/yieldprotocol/environments-v2#readme",
+  "dependencies": {
+    "latest": "^0.2.0"
+  }
 }

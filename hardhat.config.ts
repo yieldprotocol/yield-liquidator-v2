@@ -9,10 +9,9 @@ import 'hardhat-gas-reporter'
 import 'hardhat-typechain'
 import 'solidity-coverage'
 import 'hardhat-deploy'
-
 import { task } from 'hardhat/config'
-import { TASK_TEST } from 'hardhat/builtin-tasks/task-names'
-import { TaskArguments, HardhatRuntimeEnvironment, RunSuperFunction } from 'hardhat/types'
+
+// import { addAsset, makeBase, makeIlk, addSeries } from './scripts/add'
 
 // REQUIRED TO ENSURE METADATA IS SAVED IN DEPLOYMENTS (because solidity-coverage disable it otherwise)
 /* import {
@@ -24,68 +23,68 @@ task(TASK_COMPILE_GET_COMPILER_INPUT).setAction(async (_, bre, runSuper) => {
   return input
 }) */
 
-// Periodically, one needs to remove the 'artifacts' and 'typechain' folder (and hence, do a yarn build). Yet, if running yarn build, the tests shouldn't run the compilation again, so the hook below accomplishes just that.
-task(
-  TASK_TEST,
-  "Runs the tests",
-  async (args: TaskArguments, hre: HardhatRuntimeEnvironment, runSuper: RunSuperFunction<TaskArguments>) => {
-    return runSuper({...args, noCompile: true});
-  }
-);
-
-task("lint:collisions", "Checks all contracts for function signatures collisions with ROOT (0x00000000) and LOCK (0xffffffff)",
-  async (taskArguments, hre, runSuper) => {
-    let ROOT = "0x00000000"
-    let LOCK = "0xffffffff"
-    const abiPath = path.join(__dirname, 'abi')
-    for (let contract of fs.readdirSync(abiPath)) {
-      const iface = new hre.ethers.utils.Interface(require(abiPath + "/" + contract))
-      for (let func in iface.functions) {
-        const sig = iface.getSighash(func)
-        if (sig == ROOT) {
-          console.error("Function " + func + " of contract " + contract.slice(0, contract.length - 5) + " has a role-colliding signature with ROOT.")
-        }
-        if (sig == LOCK) {
-          console.error("Function " + func + " of contract " + contract.slice(0, contract.length - 5) + " has a role-colliding signature with LOCK.")
-        }
-      }
+/* task("asset", "Adds assets and makes them into ilks and/or bases")
+  .addFlag("add", "Add asset")
+  .addFlag("base", "Make asset into base")
+  .addFlag("ilk", "Make asset into ilk")
+  .addVariadicPositionalParam("asset", "The details of the asset")
+  .setAction(async (taskArgs, hre) => {
+    const argv: any = {}
+    if (taskArgs.add) {
+      argv.asset = taskArgs.asset[0]  // address
+      await addAsset(argv, hre)
+    } else if (taskArgs.base) {
+      argv.asset = taskArgs.asset[0]  // address
+      argv.rateSource = [1]           // address
+      argv.chiSource = [2]            // address
+      await makeBase(argv, hre)
+    } else if (taskArgs.ilk) {
+      argv.asset = taskArgs.asset[0]  // address, p.e. MKR, which will be used as collateral
+      argv.base = taskArgs.asset[1]   // address, p.e. DAI, which will be the underlying
+      argv.spotSource = taskArgs.asset[2] // address, p.e. DAI/MKR, which will be the source for the spot oracle
+      await makeIlk(argv, hre)
+    } else {
+      console.error("Must add an asset, make an asset into a base or make an asset into an ilk")
     }
-    console.log("No collisions, check passed.")
-  }
-)
+});
+
+task("series", "Adds a series")
+  .addVariadicPositionalParam("series", "The details of the series")
+  .setAction(async (taskArgs, hre) => {
+    const argv: any = {}
+    argv.seriesId = taskArgs.series[0]  // address, p.e. MKR, which will be used as collateral
+    argv.base = taskArgs.series[1]   // address, p.e. DAI, which will be the underlying
+    argv.maturity = taskArgs.series[2]   // address, p.e. DAI, which will be the underlying
+    argv.ilkIds = []
+    argv.ilkIds = taskArgs.series.slice(3).forEach((ilkId: any) => { argv.ilkIds.push(ilkId) })
+    await addSeries(argv, hre)
+}); */
 
 function nodeUrl(network: any) {
   let infuraKey
-  let alchemyKey
   try {
     infuraKey = fs.readFileSync(path.resolve(__dirname, '.infuraKey')).toString().trim()
-  } catch (e) {
+  } catch(e) {
     infuraKey = ''
   }
-  try {
-    alchemyKey = fs.readFileSync(path.resolve(__dirname, '.alchemyKey')).toString().trim()
-  } catch (e) {
-    alchemyKey = ''
-  }
-  // return `https://${network}.infura.io/v3/${infuraKey}`
-  return `https://eth-${network}.alchemyapi.io/v2/${alchemyKey}`
+  return `https://${network}.infura.io/v3/${infuraKey}`
 }
 
 let mnemonic = process.env.MNEMONIC
 if (!mnemonic) {
   try {
     mnemonic = fs.readFileSync(path.resolve(__dirname, '.secret')).toString().trim()
-  } catch (e) { }
+  } catch(e){}
 }
 const accounts = mnemonic ? {
   mnemonic,
-} : undefined
+}: undefined
 
 let etherscanKey = process.env.ETHERSCANKEY
 if (!etherscanKey) {
   try {
     etherscanKey = fs.readFileSync(path.resolve(__dirname, '.etherscanKey')).toString().trim()
-  } catch (e) { }
+  } catch(e){}
 }
 
 module.exports = {
@@ -94,20 +93,20 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1500,
+        runs: 1000,
       }
     }
   },
-  typechain: {
-    outDir: 'typechain',
-    target: 'ethers-v5',
-  },
   abiExporter: {
-    path: './abi',
+    path: './abis',
     clear: true,
     flat: true,
     // only: [':ERC20$'],
     spacing: 2
+  },
+  typechain: {
+    outDir: 'typechain',
+    target: 'ethers-v5',
   },
   contractSizer: {
     alphaSort: true,
@@ -115,7 +114,7 @@ module.exports = {
     disambiguatePaths: false,
   },
   gasReporter: {
-    enabled: false,
+    enabled: true,
   },
   defaultNetwork: 'hardhat',
   namedAccounts: {
@@ -124,8 +123,17 @@ module.exports = {
     other: 2,
   },
   networks: {
+    hardhat: {
+      chainId: 31337
+    },
+    localhost: {
+      chainId: 31337,
+      timeout: 600000
+    },
     kovan: {
       accounts,
+      gasPrice: 10000000000,
+      timeout: 600000,
       url: nodeUrl('kovan')
     },
     goerli: {
@@ -142,13 +150,9 @@ module.exports = {
     },
     mainnet: {
       accounts,
+      gasPrice: 200000000000,
+      timeout: 60000000,
       url: nodeUrl('mainnet')
-    },
-    hardhat: {
-      accounts,
-      forking: {
-        url: nodeUrl('mainnet')
-      },
     },
     coverage: {
       url: 'http://127.0.0.1:8555',
