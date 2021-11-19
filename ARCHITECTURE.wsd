@@ -1,0 +1,129 @@
+@startuml Yield v2 Liquidations Bot Architecture
+entity keeper.rs
+entity liquidations.rs as liq
+entity borrowers.rs as borrowers
+
+database "Eth Node" as ethnode
+
+loop
+    group wait for a new block
+        keeper.rs -> ethnode: got new blocks?
+        return no
+        ...sleep...
+        keeper.rs -> ethnode: got new blocks?
+        return new block!
+    end
+
+    group on_block
+        keeper.rs -> liq: remove_or_bump
+        note right: bumps gas for all non-confirmed transactions
+        keeper.rs -> borrowers: update_vaults
+        note right: finds all new vaults created since last seen block
+        keeper.rs -> liq: start_auctions
+        note right: starts auction for all undercollaterized vaults
+        keeper.rs -> liq: buy_opportunities
+        note right: liquidates vaults that have either:\n\
+ - dropped below `min_ratio` collaterization level (default: 110)\n\
+ - all collateral released by the auction
+    end
+end
+@enduml
+
+@startuml liquidations::remove_or_bump
+title liquidations::remove_or_bump
+start
+while (have pending 'liquidate' txs?) is (yes)
+    :tx.max_fee_per_gas = gas_escalator.get_gas_price()
+    tx.max_priority_fee_per_gas = gas_escalator.get_gas_price();
+endwhile (no)
+
+while (have pending 'start auction' txs?) is (yes)
+    :tx.max_fee_per_gas = gas_escalator.get_gas_price()
+    tx.max_priority_fee_per_gas = gas_escalator.get_gas_price();
+endwhile (no)
+
+end
+@enduml
+
+@startuml borrowers::update_vaults
+title borrowers::update_vaults
+start
+group Collect new vaults
+    : get all 'Cauldron::VaultPoured' events since last block;
+    while (have new VaultPoured event?) is (yes)
+        : self.vaults[event.vault_id] = new Vault();
+    endwhile (no)
+end group
+group Update **all** vaults data
+    while (all self.vaults are processed?) is (no)
+        :update vault data:
+
+        self.vault[vault_id] = get_vault_info(vault_id){
+            vault.level = Cauldron::level(vault_id)
+            vault.is_collateralized = vault.level >= 0
+            vault.under_auction = Witch::auction(vault_id).owner != 0
+        };
+    endwhile (yes)
+end group
+end
+@enduml
+
+
+@startuml liquidations::start_auctions
+title liquidations::start_auctions
+skinparam ConditionEndStyle hline
+start
+group Check **all** vaults
+    while (all self.vaults are processed?) is (no)
+        if (vault has no pending liquidation?) then (yes)
+            if (vault is undercollaterized?) then (yes)
+                if (vault is **not** under auction) then (yes)
+                    : With::auction(vault_id);
+                endif
+            endif
+        endif
+    endwhile (yes)
+end group
+end
+
+@startuml liquidations::buy_opportunities
+title liquidations::buy_opportunities
+skinparam ConditionEndStyle hline
+start
+group Collect new auctions
+    : get all 'Witch::Auctioned' events since last block;
+    while (have new Auctioned event?) is (yes)
+        : self.auctions[event.vault_id] = new Auction();
+    endwhile (no)
+end group
+group Process **all** auctions
+    while (all self.auctions are processed?) is (no)
+        if (auction has no pending bid from us?) then (yes)
+            :update auction data:
+
+            auction = self.get_auction(auction_id){
+                auction.under_auction = Witch::auctions(id).owner != 0
+                auction.ratio_pct = Flash::collateral_to_debt_ratio(vault_id, ...)
+                    int256 level = cauldron.level(vaultId)
+                    uint128 accrued_debt = cauldron.debtToBase(seriesId, art)
+                    (, uint32 ratio_u32) = cauldron.spotOracles(baseId, ilkId)
+
+                    return (level * 1e18 / int256(int128(accrued_debt))) + int256(uint256(ratio_u32)) * 1e12
+                auction.is_at_minimal_price = Flash::is_at_minimal_price(vault_id, ...)
+                    (, uint32 auction_start) = witch.auctions(vaultId)
+                    (, uint32 duration, , ) = witch.ilks(ilkId)
+                    uint256 elapsed = uint32(block.timestamp) - auction_start
+                    return elapsed >= duration
+                ...
+            };
+
+            if (auction is still open?) then (yes)
+                if (auction.ratio_pct < 110% OR auction.is_at_minimal_price) then (yes)
+                    :Flash::init_flash();
+                endif
+            endif
+        endif
+    endwhile (yes)
+end group
+end
+@enduml
