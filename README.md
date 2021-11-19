@@ -2,7 +2,7 @@
 
 Liquidates undercollateralized fyDAI-ETH positions using Uniswap V2 as a capital source.
 
-This liquidator altruistically calls the `Liquidations.liquidate` function for any
+This liquidator altruistically calls the `Witch.auction` function for any
 position that is underwater, trigerring an auction for that position. It then tries
 to participate in the auction by flashloaning funds from Uniswap, if there's enough
 profit to be made.
