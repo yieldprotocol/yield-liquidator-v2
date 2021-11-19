@@ -1,76 +1,71 @@
-# Yield Protocol Vault v2
+# Yield Protocol Liquidator
 
-The Yield Protocol Vault v2 is a Collateralized Debt Engine for zero-coupon bonds, loosely integrated with [YieldSpace Automated Market Makers](https://yield.is/Yield.pdf), as described by Dan Robinson and Allan Niemerg.
+Liquidates undercollateralized fyDAI-ETH positions using Uniswap V2 as a capital source.
 
-## Smart Contracts
+This liquidator altruistically calls the `Liquidations.liquidate` function for any
+position that is underwater, trigerring an auction for that position. It then tries
+to participate in the auction by flashloaning funds from Uniswap, if there's enough
+profit to be made.
 
-A longer description of the smart contracts can be found in the [Yield v2 reference](https://docs.google.com/document/d/1WBrJx_5wxK1a4N_9b6IQV70d2TyyyFxpiTfjA6PuZaQ/edit).
-
-### Oracles
-Oracles return spot prices, borrowing rates and lending rates for the assets in the protocol.
-
-### Join
-Joins store assets, such as ERC20 or ERC721 tokens.
-
-### FYToken
-FYTokens are ERC20 tokens that are redeemable at maturity for their underlying asset, at an amount that starts at 1 and increases with the lending rate (`chi`).
-
-### Cauldron
-The Cauldron is responsible for the accounting in the Yield Protocol. Vaults are created to contain borrowing positions of one collateral asset type against one fyToken series. The debt in a given vault increases with the borrowing rate (`rate`) after maturity of the associated fyToken series.
-
-When the value of the collateral in a vault falls below the value of the borrowed fyToken, the vault can be liquidated.
-
-### Ladle
-The Ladle is the gateway for all Cauldron integrations, and all asset movements in and out of the Joins (except fyToken redemptions). To implement certain features the Ladle integrates with YieldSpace Pools.
-
-[Ladle recipe cookbook](https://docs.google.com/document/d/1-r9g99aZfGLd1Aa3FRxBXLybgfGzAZIuHWwufF-I8Js).
-
-### Wand
-The Wand bundles function calls into governance actions.
-
-### Witch
-The Witch is the liquidation engine for the Yield Protocol Vault v2.
-
-## Warning
-This code is provided as-is, with no guarantees of any kind.
-
-### Pre Requisites
-Before running any command, make sure to install dependencies:
+## CLI
 
 ```
-$ yarn
+Usage: ./yield-liquidator [OPTIONS]
+
+Optional arguments:
+  -h, --help
+  -c, --config CONFIG        path to json file with the contract addresses
+  -u, --url URL              the Ethereum node endpoint (HTTP or WS) (default: http://localhost:8545)
+  -C, --chain-id CHAIN-ID    chain id (default: 1)
+  -p, --private-key PRIVATE-KEY
+                             path to your private key
+  -i, --interval INTERVAL    polling interval (ms) (default: 1000)
+  -f, --file FILE            the file to be used for persistence (default: data.json)
+  -m, --min-ratio MIN-RATIO  the minimum ratio (collateral/debt) to trigger liquidation, percents (default: 110)
+  -s, --start-block START-BLOCK
+                             the block to start watching from
 ```
 
-### Lint Solidity
-Lint the Solidity code:
-
+Your contracts' `--config` file should be in the following format where:
+ * `Witch` is the address of the Witch
+ * `Flash` is the address of the PairFlash
+ * `Multicall` is the address of the Multicall (https://github.com/makerdao/multicall)
 ```
-$ yarn lint:sol
-```
-
-### Lint TypeScript
-Lint the TypeScript code:
-
-```
-$ yarn lint:ts
+{
+  "Witch": "0xCA4c47Ed4E8f8DbD73ecEd82ac0d8999960Ed57b",
+  "Flash": "0xB869908891b245E82C8EDb74af02f799b61deC97",
+  "Multicall": "0xeefba1e63905ef1d7acba5a8513c70307c1ce441"
+}
 ```
 
-### Coverage
-Generate the code coverage report:
-
+`Flash` is a deployment of `PairFlash` contract (https://github.com/sblOWPCKCR/vault-v2/blob/liquidation/contracts/liquidator/Flash.sol). Easy way to compile/deploy it:
 ```
-$ yarn coverage
+solc --abi --overwrite --optimize --optimize-runs 5000 --bin -o /tmp/ external/vault-v2/contracts/liquidator/Flash.sol && ETH_GAS=3000000 seth send --create /tmp/PairFlash.bin "PairFlash(address,address,address,address,address) " $OWNER 0xE592427A0AEce92De3Edee1F18E0157C05861564 0x1F98431c8aD98523631AE4a59f267346ea31F984 0xd0a1e359811322d97991e03f863a0c30c2cf029c $WITCH_ADDRESS
 ```
 
-### Test
-Compile and test the smart contracts with [Buidler](https://buidler.dev/) and Mocha:
+The `--private-key` _must not_ have a `0x` prefix. Set the `interval` to 15s for mainnet.
+
+## Building and Running
 
 ```
-$ yarn test
+# Build in release mode
+cargo build --release
+
+# Run it with 
+./target/release/yield-liquidator \
+    --config ./addrs.json \
+    --private-key ./private_key \
+    --url http://localhost:8545 \
+    --interval 7000 \
+    --file state.json \
 ```
 
-## Bug Bounty
-Yield is offering bounties for bugs disclosed to us at [security@yield.is](mailto:security@yield.is). The bounty reward is up to $25,000, depending on severity. Please include full details of the vulnerability and steps/code to reproduce. We ask that you permit us time to review and remediate any findings before public disclosure.
+## How it Works
 
-## License
-All files in this repository are released under the [GPLv3](https://github.com/yieldprotocol/fyDai/blob/master/LICENSE.md) license.
+On each block:
+1. Bumps the gas price of all of our pending transactions
+2. Updates our dataset of borrowers debt health & liquidation auctions with the new block's data
+3. Trigger the auction for any undercollateralized borrowers
+4. Try participating in any auctions which are worth buying
+
+Take this liquidator for a spin by [running it in a test environment](TESTNET.md).
