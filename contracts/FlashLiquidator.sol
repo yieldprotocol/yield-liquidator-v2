@@ -7,15 +7,23 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
 import "./UniswapImports.sol";
+import "./ICurveStableSwap.sol";
+import "./IWstEth.sol";
 
-
+// TODO: Rename this file and contract FlashLiquidatorWsteth.sol
+// For now, we use the old name for initial code review to clearly show diff from the original contract
 contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
     using TransferHelper for address;
+    using TransferHelper for IWstEth;
 
-    ISwapRouter public immutable swapRouter;
-    ICauldron public immutable cauldron;
-    IWitch public immutable witch;
-    address public immutable recipient;
+    ICauldron public immutable cauldron;          // Yield cauldron
+    IWitch public immutable witch;                // Yield witch
+    ISwapRouter public immutable swapRouter;      // Uniswap swap router
+    ICurveStableSwap public immutable curveSwap;  // Curve stEth/Eth pool
+    IWstEth public immutable wstEth;              // Lido wrapped stEth contract address
+    address public immutable stEth;               // stEth contract address
+    address public immutable recipient;           // Recipient address
+
 
     struct FlashCallbackData {
         bytes12 vaultId;
@@ -27,19 +35,25 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
     }
 
     constructor(
-        address _recipient,
-        ISwapRouter _swapRouter,
-        address _factory,
-        address _WETH9,
-        IWitch _witch
-    ) PeripheryImmutableState(_factory, _WETH9) {
-        swapRouter = _swapRouter;
-        witch = _witch;
-        cauldron = _witch.cauldron();
-        recipient = _recipient;
+        IWitch witch_,
+        ISwapRouter swapRouter_,
+        ICurveStableSwap curveSwap_,
+        IWstEth wstEth_,
+        address stEth_,
+        address recipient_,
+        address factory_,
+        address WETH9_
+    ) PeripheryImmutableState(factory_, WETH9_) {
+        cauldron = witch_.cauldron();
+        witch = witch_;
+        swapRouter = swapRouter_;
+        curveSwap = curveSwap_;
+        wstEth = wstEth_;
+        stEth = stEth_;
+        recipient = recipient_;
     }
 
-    function collateralToDebtRatio(bytes12 vaultId) public 
+    function collateralToDebtRatio(bytes12 vaultId) public
     returns (uint256) {
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
         DataTypes.Balances memory balances = cauldron.balances(vaultId);
@@ -83,36 +97,55 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
 
+        uint256 debtToReturn = decoded.baseLoan + fee;
+
         // liquidate the vault
         decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
-        uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);     
+        uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);
 
-        // sell the collateral
-        uint256 debtToReturn = decoded.baseLoan + fee;
-        decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
-        uint256 debtRecovered = swapRouter.exactInputSingle(
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: decoded.collateral,
-                tokenOut: decoded.base,
-                fee: 500,  // can't use the same fee as the flash loan
-                           // because of reentrancy protection
-                recipient: address(this),
-                deadline: block.timestamp + 180,
-                amountIn: collateralReceived,
-                amountOutMinimum: debtToReturn,
-                sqrtPriceLimitX96: 0
-            })
-        );
+        // Sell collateral
+
+        // Step 1 - unwrap wstEth => stEth
+        uint256 unwrappedStEth = wstEth.unwrap(collateralReceived);
+
+        // Step 2 - swap stEth for Eth on Curve
+        uint256 minimumEthToReceive = unwrappedStEth;  // TODO consult an oracle to check stEth/Eth price?
+        stEth.safeApprove(address(curveSwap), unwrappedStEth);
+        uint256 ethReceived = curveSwap.exchange(1, 0, unwrappedStEth, minimumEthToReceive);
+
+        // Step 3 -  wrap the Eth => Weth
+        IWETH9(WETH9).deposit{value: ethReceived}();
+
+        // Step 4 - if necessary, swap Weth for base on UniSwap
+        uint256 debtRecovered;
+        if (decoded.base == WETH9) {
+            debtRecovered = ethReceived;
+        } else {
+            ISwapRouter swapRouter_ = swapRouter;
+            WETH9.safeApprove(address(swapRouter_), ethReceived);
+            uint256 minimumBaseToReceive = 0;  // TODO consult an oracle to check eth/base price?
+            debtRecovered = swapRouter_.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: WETH9,
+                    tokenOut: decoded.base,
+                    fee: 500,  // can't use the same fee as the flash loan
+                               // because of reentrancy protection
+                    recipient: address(this),
+                    deadline: block.timestamp + 180,
+                    amountIn: ethReceived,
+                    amountOutMinimum: minimumBaseToReceive,
+                    sqrtPriceLimitX96: 0
+                })
+            );
+        }
 
         // if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
             uint256 profit = debtRecovered - debtToReturn;
-            decoded.base.safeApprove(address(this), profit);
             pay(decoded.base, address(this), recipient, profit);
         }
 
         // repay flash loan
-        decoded.base.safeApprove(address(this), debtToReturn); // TODO: Does this do anything?
         pay(decoded.base, address(this), msg.sender, debtToReturn);
     }
 
@@ -126,6 +159,7 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         DataTypes.Series memory series = cauldron.series(vault.seriesId);
         address base = cauldron.assets(series.baseId);
         address collateral = cauldron.assets(vault.ilkId);
+        require(collateral == address(wstEth), "not wstEth");
 		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
 
         // tokens in PoolKey must be ordered
