@@ -3,19 +3,32 @@
 pragma solidity >=0.8.6;
 
 import "@yield-protocol/utils-v2/contracts/interfaces/IWETH9.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
 import "./UniswapImports.sol";
+import "./IYvToken.sol";
 
-
+// @notice This should only be used with basic Yearn Vault Tokens such as yvDAI and yvUSDC
+//         and should not be used with something like yvcrvstEth which would require additional
+//         logic to unwrap
+// TODO: Rename this file and contract FlashLiquidatorYearnVaultBasic.sol
+// For now, we use the old name for initial code review to clearly show diff from the original contract
 contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
     using TransferHelper for address;
+
+    // @notice Emitted when a new underlying is mapped to the corresponding Yearn Vault token
+    // @param underlying Address of the underlying token (e.g. USDC)
+    // @param yvToken Address of the Yearn Vault token (e.g. yvUSDC)
+    event UnderlyingSet(
+        address indexed yvToken,
+        address indexed underlying
+    );
 
     ISwapRouter public immutable swapRouter;
     ICauldron public immutable cauldron;
     IWitch public immutable witch;
     address public immutable recipient;
+    mapping (address => address) public yvToUnderlying; // Yearn Vault token addresses to addresses of underlying tokens
 
     struct FlashCallbackData {
         bytes12 vaultId;
@@ -39,7 +52,12 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         recipient = _recipient;
     }
 
-    function collateralToDebtRatio(bytes12 vaultId) public 
+    function setUnderlyingAddress(address yvToken, address underlying) external {
+        yvToUnderlying[yvToken] = underlying;
+        emit UnderlyingSet(yvToken, underlying);(yvToken, underlying);
+    }
+
+    function collateralToDebtRatio(bytes12 vaultId) public
     returns (uint256) {
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
         DataTypes.Balances memory balances = cauldron.balances(vaultId);
@@ -66,10 +84,10 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         return elapsed >= duration;
     }
 
-    /// @param fee0 The fee from calling flash for token0
-    /// @param fee1 The fee from calling flash for token1
-    /// @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
-    /// @notice implements the callback called from flash
+    // @param fee0 The fee from calling flash for token0
+    // @param fee1 The fee from calling flash for token1
+    // @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
+    // @notice implements the callback called from flash
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
@@ -82,23 +100,28 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         // decode and verify
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
+        address underlyingAddress = yvToUnderlying[decoded.collateral];
+        require(underlyingAddress != address(0), "Underlying not set");
 
         // liquidate the vault
         decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
-        uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);     
+        uint256 collateralReceived = witch.payAll(decoded.vaultId, 0); // collateral is yvToken
+
+        // redeem the yvToken for underlying
+        uint256 underlyingRedeemed = IYvToken(decoded.collateral).withdraw();
 
         // sell the collateral
         uint256 debtToReturn = decoded.baseLoan + fee;
         decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
         uint256 debtRecovered = swapRouter.exactInputSingle(
             ISwapRouter.ExactInputSingleParams({
-                tokenIn: decoded.collateral,
+                tokenIn: underlyingAddress,
                 tokenOut: decoded.base,
                 fee: 500,  // can't use the same fee as the flash loan
                            // because of reentrancy protection
                 recipient: address(this),
                 deadline: block.timestamp + 180,
-                amountIn: collateralReceived,
+                amountIn: underlyingRedeemed,
                 amountOutMinimum: debtToReturn,
                 sqrtPriceLimitX96: 0
             })
@@ -107,17 +130,15 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         // if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
             uint256 profit = debtRecovered - debtToReturn;
-            decoded.base.safeApprove(address(this), profit);
             pay(decoded.base, address(this), recipient, profit);
         }
 
         // repay flash loan
-        decoded.base.safeApprove(address(this), debtToReturn); // TODO: Does this do anything?
         pay(decoded.base, address(this), msg.sender, debtToReturn);
     }
 
-    /// @param vaultId The vault to liquidate
-    /// @notice Liquidates a vault with help from a Uniswap v3 flash loan
+    // @param vaultId The vault to liquidate
+    // @notice Liquidates a vault with help from a Uniswap v3 flash loan
     function liquidate(bytes12 vaultId) external {
         uint24 poolFee = 3000; // 0.3%
 
