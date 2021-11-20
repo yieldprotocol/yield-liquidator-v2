@@ -16,13 +16,13 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
     using TransferHelper for address;
     using TransferHelper for IWstEth;
 
-    ICauldron public immutable cauldron;          // Yield cauldron
-    IWitch public immutable witch;                // Yield witch
+    address public immutable recipient;           // Recipient address
     ISwapRouter public immutable swapRouter;      // Uniswap swap router
+    IWitch public immutable witch;                // Yield witch
+    ICauldron public immutable cauldron;          // Yield cauldron
     ICurveStableSwap public immutable curveSwap;  // Curve stEth/Eth pool
     IWstEth public immutable wstEth;              // Lido wrapped stEth contract address
     address public immutable stEth;               // stEth contract address
-    address public immutable recipient;           // Recipient address
 
 
     struct FlashCallbackData {
@@ -35,22 +35,22 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
     }
 
     constructor(
-        IWitch witch_,
+        address recipient_,
         ISwapRouter swapRouter_,
+        address factory_,
+        address WETH9_,
+        IWitch witch_,
         ICurveStableSwap curveSwap_,
         IWstEth wstEth_,
-        address stEth_,
-        address recipient_,
-        address factory_,
-        address WETH9_
+        address stEth_
     ) PeripheryImmutableState(factory_, WETH9_) {
-        cauldron = witch_.cauldron();
-        witch = witch_;
+        recipient = recipient_;
         swapRouter = swapRouter_;
+        witch = witch_;
+        cauldron = witch_.cauldron();
         curveSwap = curveSwap_;
         wstEth = wstEth_;
         stEth = stEth_;
-        recipient = recipient_;
     }
 
     function collateralToDebtRatio(bytes12 vaultId) public
