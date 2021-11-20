@@ -109,9 +109,8 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         uint256 unwrappedStEth = wstEth.unwrap(collateralReceived);
 
         // Step 2 - swap stEth for Eth on Curve
-        uint256 minimumEthToReceive = unwrappedStEth;  // TODO consult an oracle to check stEth/Eth price?
         stEth.safeApprove(address(curveSwap), unwrappedStEth);
-        uint256 ethReceived = curveSwap.exchange(1, 0, unwrappedStEth, minimumEthToReceive);
+        uint256 ethReceived = curveSwap.exchange(1, 0, unwrappedStEth, 0);
 
         // Step 3 -  wrap the Eth => Weth
         IWETH9(WETH9).deposit{value: ethReceived}();
@@ -123,7 +122,6 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         } else {
             ISwapRouter swapRouter_ = swapRouter;
             WETH9.safeApprove(address(swapRouter_), ethReceived);
-            uint256 minimumBaseToReceive = 0;  // TODO consult an oracle to check eth/base price?
             debtRecovered = swapRouter_.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams({
                     tokenIn: WETH9,
@@ -133,7 +131,7 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
                     recipient: address(this),
                     deadline: block.timestamp + 180,
                     amountIn: ethReceived,
-                    amountOutMinimum: minimumBaseToReceive,
+                    amountOutMinimum: 0,
                     sqrtPriceLimitX96: 0
                 })
             );
