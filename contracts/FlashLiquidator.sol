@@ -53,6 +53,10 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         stEth = stEth_;
     }
 
+    receive() external override payable {
+        require(msg.sender == WETH9 || msg.sender == address(curveSwap), "Unauthorized sender");
+    }
+
     function collateralToDebtRatio(bytes12 vaultId) public
     returns (uint256) {
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
@@ -83,7 +87,9 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
     /// @param fee0 The fee from calling flash for token0
     /// @param fee1 The fee from calling flash for token1
     /// @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
-    /// @notice implements the callback called from flash
+    /// @notice     implements the callback called from flash
+    /// @dev        Unlike the other Yield FlashLiquidator contracts, this contains extra steps to
+    ///             unwrap wstEth and swap it for Eth on Curve before Uniswapping it for base
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
@@ -156,8 +162,12 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         DataTypes.Balances memory balances = cauldron.balances(vaultId);
         DataTypes.Series memory series = cauldron.series(vault.seriesId);
         address base = cauldron.assets(series.baseId);
-        address collateral = cauldron.assets(vault.ilkId);
-        require(collateral == address(wstEth), "not wstEth");
+        require(cauldron.assets(vault.ilkId) == address(wstEth), "not wstEth");
+
+        //  Hardcoding the DAI address for now, can't use the ilk for the other token
+        //  in the pool because there are no wstEth pools on Uniswap from what I can tell
+        address collateral = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
 		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
 
         // tokens in PoolKey must be ordered
