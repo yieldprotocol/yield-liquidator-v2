@@ -1,0 +1,1 @@
+--chain-id 42 --min-ratio 110 -i 30000 --url https://eth-kovan.alchemyapi.io/v2/your-key --json-log --instance-name kovan
