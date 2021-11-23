@@ -1,7 +1,7 @@
 import { ethers, network } from 'hardhat'
 import * as hre from 'hardhat'
 
-import { FlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
+import { WstethFlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
 
 /**
  * @dev This script tests the FlashLiquidator
@@ -10,7 +10,7 @@ import { FlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
 ;(async () => {
   // UPDATE THESE TWO MANUALLY:
   const flashLiquidatorAddress = '0x4EE6eCAD1c2Dae9f525404De8555724e3c35d07B'
-  const vaultId = '0xce85f94a9f59966b2ffbf393'
+  const vaultId = '0x01d005a68c3903daa8e097b1'
 
   const wethAddress = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
   const cauldronAddress = '0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867'
@@ -38,7 +38,7 @@ import { FlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
     'FlashLiquidator',
     flashLiquidatorAddress,
     ownerAcc
-  )) as unknown) as FlashLiquidator
+  )) as unknown) as WstethFlashLiquidator
 
   // At the time of writing, this vault is collateralized at 268%. Find more at https://yield-protocol-info.netlify.app/#/vaults
   console.log(`Vault to liquidate: ${vaultId}`)
