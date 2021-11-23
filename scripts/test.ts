@@ -22,7 +22,6 @@ import { FlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
   const WSTETH = ethers.utils.formatBytes32String('04').slice(0, 14)
   const STETH = ethers.utils.formatBytes32String('05').slice(0, 14)
 
-
   let [ownerAcc] = await ethers.getSigners()
 
   // Give some ether to the running account, since we are in a mainnet fork and would have nothing
