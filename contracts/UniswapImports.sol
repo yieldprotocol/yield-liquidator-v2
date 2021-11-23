@@ -623,10 +623,10 @@ abstract contract PeripheryImmutableState is IPeripheryImmutableState {
 
 // File @uniswap/v3-periphery/contracts/base/PeripheryPayments.sol@v1.1.1
 
-// 
+//
 
 abstract contract PeripheryPayments is IPeripheryPayments, PeripheryImmutableState {
-    receive() external payable {
+    receive() external virtual payable {
         require(msg.sender == WETH9, 'Not WETH9');
     }
 
