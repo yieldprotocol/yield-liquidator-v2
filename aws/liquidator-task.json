@@ -1,0 +1,41 @@
+{
+    "family": "liquidator-$INSTANCE",
+    "networkMode": "awsvpc",
+    "executionRoleArn": "arn:aws:iam::$AWSACCOUNT:role/liquidator-task-execution-role-$INSTANCE",
+    "taskRoleArn": "arn:aws:iam::$AWSACCOUNT:role/liquidator-task-role-$INSTANCE",
+    "containerDefinitions": [
+        {
+            "name": "liquidator-$INSTANCE", 
+            "image": "$AWSACCOUNT.dkr.ecr.$REGION.amazonaws.com/yield-v2-liquidator:latest",
+            "essential": true,
+            "secrets": [
+                {
+                    "name": "L_CONFIG",
+                    "valueFrom": "$CONFIG_KEY"
+                },
+                {
+                    "name": "L_ARGS",
+                    "valueFrom": "$ARGS_KEY"
+                },
+                {
+                    "name": "L_PK",
+                    "valueFrom": "$PK_KEY"
+                }
+            ],
+            "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {
+                            "awslogs-group": "yield",
+                            "awslogs-region": "$REGION",
+                            "awslogs-stream-prefix": "yield-liquidator",
+                            "mode": "non-blocking"
+                    }
+            }
+        }
+    ], 
+    "requiresCompatibilities": [
+        "FARGATE"
+    ], 
+    "cpu": "256", 
+    "memory": "512"
+}
