@@ -2,7 +2,10 @@
 
 pragma solidity >=0.8.6;
 
-// @notice For use with Yield Flash Liquidator to redeem yvTokens for underlying
+// @notice For use with Yield Flash Liquidator
 interface IYvToken {
+    /// @dev Used to redeem yvTokens for underlying
     function withdraw() external returns (uint256);
+
+    function token() external returns (address);
 }
