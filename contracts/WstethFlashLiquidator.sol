@@ -17,6 +17,8 @@ contract WstethFlashLiquidator is FlashLiquidator {
     address public immutable DAI;                 /// stEth contract address
 
     /// @notice An event for whenever Eth is received
+    /// @param  guy Address of sender
+    /// @param  amount Amount of Ether sent
     /// @dev    This should happen whenever stEth is swapped for Eth on Curve
     event EthReceived(address indexed guy, uint256 amount);
 
