@@ -3,7 +3,6 @@
 pragma solidity >=0.8.6;
 
 import "./FlashLiquidator.sol";
-import "./UniswapImports.sol";
 import "./ICurveStableSwap.sol";
 import "./IWstEth.sol";
 
