@@ -56,7 +56,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
     /// @param  baseToken is the address of the series base in the vault being liquidated
     /// @param  collateral is the address of the ilk in the vault being liquidated
     /// @return otherToken address used to identify the other token in the pool besides the series base
-    function _getOtherToken(address baseToken, address collateral) internal override returns (address otherToken) {
+    function _getOtherToken(address baseToken, address collateral) internal override view returns (address otherToken) {
         require(collateral == address(wstEth), "not wstEth");
         if (baseToken != WETH9) {
             otherToken = WETH9;
