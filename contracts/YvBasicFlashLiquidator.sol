@@ -47,7 +47,6 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
         }
     }
 
-
     /// @param fee0 The fee from calling flash for token0
     /// @param fee1 The fee from calling flash for token1
     /// @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
@@ -105,5 +104,4 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
         /// repay flash loan
         pay(decoded.base, address(this), msg.sender, debtToReturn);
     }
-
 }
