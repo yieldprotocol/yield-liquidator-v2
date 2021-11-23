@@ -14,7 +14,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
     ICurveStableSwap public immutable curveSwap;  /// Curve stEth/Eth pool
     IWstEth public immutable wstEth;              /// Lido wrapped stEth contract address
     address public immutable stEth;               /// stEth contract address
-    address public immutable DAI;                 /// stEth contract address
+    address public immutable DAI;                 /// DAI contract address
 
     /// @notice An event for whenever Eth is received
     /// @param  guy Address of sender
