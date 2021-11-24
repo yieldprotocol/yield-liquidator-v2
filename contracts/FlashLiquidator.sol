@@ -148,10 +148,10 @@ contract FlashLiquidator {
             unchecked {
                 profit = debtRecovered - debtToReturn;
             }
-            TransferHelper.safeTransfer(decoded.base, recipient, profit);
+            decoded.base.safeTransfer(recipient, profit);
         }
         // repay flash loan
-        TransferHelper.safeTransfer(decoded.base, msg.sender, debtToReturn);
+        decoded.base.safeTransfer(msg.sender, debtToReturn);
     }
 
     // @notice Liquidates a vault with help from a Uniswap v3 flash loan
