@@ -5,7 +5,6 @@ pragma solidity >=0.8.6;
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "./IUniswapV3Pool.sol";
 import "./ISwapRouter.sol";
 import "./PoolAddress.sol";
