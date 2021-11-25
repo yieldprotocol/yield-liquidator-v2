@@ -14,11 +14,16 @@ import "./TransferHelper.sol";
 
 
 // @notice This is the standard Flash Liquidator used with Yield liquidator bots for most collateral types
-contract FlashLiquidator {
+contract FlashLiquidator is AccessControl {
     using TransferHelper for address;
 
-    address public recipient;                 // address to receive any profits
-    IAddressRegistry public addressRegistry;  // Yield deployed contract address registry
+    event RecipientSet(address indexed recipient_);
+    event AddressRegistrySet(address indexed addressRegistry_);
+    event SwapperSet(address indexed collateral, address indexed swapper);
+
+    address public recipient;                     // address to receive any profits
+    IAddressRegistry public addressRegistry;      // Yield deployed contract address registry
+    mapping(address => address) public swappers;  // collateral address -> swapper contracts for non-standard collateral
 
     struct FlashCallbackData {
         bytes12 vaultId;
@@ -29,10 +34,30 @@ contract FlashLiquidator {
         PoolAddress.PoolKey poolKey;
     }
 
+    struct SwapperData {
+        address receivedAddress;
+        uint256 receivedAmount;
+    }
+
     // @dev Parameter order matters
     constructor(address recipient_, IAddressRegistry addressRegistry_) {
         recipient = recipient_;
         addressRegistry = addressRegistry_;
+    }
+
+    function setRecipient(address recipient_) external {
+        recipient = recipient_;
+        emit RecipientSet(recipient_);
+    }
+
+    function setAddressRegistry(IAddressRegistry addressRegistry_) external {
+        addressRegistry = addressRegistry_;
+        emit AddressRegistrySet(address(addressRegistry_));
+    }
+
+    function setSwapper(address collateral, address swapper) external {
+        swappers[collateral] = swapper;
+        emit SwapperSet(collateral, swapper);
     }
 
     function collateralToDebtRatio(bytes12 vaultId) public
@@ -104,23 +129,41 @@ contract FlashLiquidator {
         decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
         uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);
 
-        // sell the collateral
-        ISwapRouter swapRouter = ISwapRouter(addressRegistry.addresses(bytes32("swaprouter")));
+        // SWAPPER
+        address swapper = swappers[decoded.collateral];
+        address collateral;
+        if (swapper == address(0)) {
+            collateral = decoded.collateral;
+        } else {
+            (bool success, bytes memory data) = swapper.delegatecall(abi.encodeWithSignature("swap(uint256)", collateralReceived));
+            require(success, "Failed swapper");
+            SwapperData memory swapperData = abi.decode(data, (SwapperData));
+            collateral = swapperData.receivedAddress;
+            collateralReceived = swapperData.receivedAmount;
+        }
+
+        // If necessary, sell the collateral
         uint256 debtToReturn = decoded.baseLoan + fee;
-        decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
-        uint256 debtRecovered = swapRouter.exactInputSingle(
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: decoded.collateral,
-                tokenOut: decoded.base,
-                fee: 500,  /// can't use the same fee as the flash loan
-                           /// because of reentrancy protection
-                recipient: address(this),
-                deadline: block.timestamp + 180,
-                amountIn: collateralReceived,
-                amountOutMinimum: debtToReturn,
-                sqrtPriceLimitX96: 0
-            })
-        );
+        uint256 debtRecovered;
+        if (collateral == decoded.base) {
+            debtRecovered = collateralReceived;
+        } else {
+            ISwapRouter swapRouter = ISwapRouter(addressRegistry.addresses(bytes32("swaprouter")));
+            decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
+            debtRecovered = swapRouter.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: decoded.collateral,
+                    tokenOut: decoded.base,
+                    fee: 500,  /// can't use the same fee as the flash loan
+                                /// because of reentrancy protection
+                    recipient: address(this),
+                    deadline: block.timestamp + 180,
+                    amountIn: collateralReceived,
+                    amountOutMinimum: debtToReturn,
+                    sqrtPriceLimitX96: 0
+                })
+            );
+        }
 
         /// if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
