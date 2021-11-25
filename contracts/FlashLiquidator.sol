@@ -45,17 +45,17 @@ contract FlashLiquidator is AccessControl {
         addressRegistry = addressRegistry_;
     }
 
-    function setRecipient(address recipient_) external {
+    function setRecipient(address recipient_) external auth {
         recipient = recipient_;
         emit RecipientSet(recipient_);
     }
 
-    function setAddressRegistry(IAddressRegistry addressRegistry_) external {
+    function setAddressRegistry(IAddressRegistry addressRegistry_) external auth {
         addressRegistry = addressRegistry_;
         emit AddressRegistrySet(address(addressRegistry_));
     }
 
-    function setSwapper(address collateral, address swapper) external {
+    function setSwapper(address collateral, address swapper) external auth {
         swappers[collateral] = swapper;
         emit SwapperSet(collateral, swapper);
     }
