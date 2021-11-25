@@ -39,7 +39,6 @@ contract FlashLiquidator is AccessControl {
         uint256 receivedAmount;
     }
 
-    // @dev Parameter order matters
     constructor(address recipient_, IAddressRegistry addressRegistry_) {
         recipient = recipient_;
         addressRegistry = addressRegistry_;
