@@ -111,7 +111,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
                     recipient: address(this),
                     deadline: block.timestamp + 180,
                     amountIn: ethReceived,
-                    amountOutMinimum: 0,
+                    amountOutMinimum: debtToReturn,
                     sqrtPriceLimitX96: 0
                 })
             );
