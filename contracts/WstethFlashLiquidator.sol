@@ -63,7 +63,11 @@ contract WstethFlashLiquidator is FlashLiquidator {
     ) external override {
         // we only borrow 1 token
         require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
-        uint256 fee = fee0 + fee1;
+        uint256 fee;
+        unchecked {
+            // Since one fee is always zero, this won't overflow
+            fee = fee0 + fee1;
+        }
 
         // decode, verify, and set debtToReturn
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
