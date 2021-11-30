@@ -30,7 +30,7 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
     // @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
     // @notice     implements the callback called from flash
     // @dev        Unlike the other Yield FlashLiquidator contracts, this contains extra steps to
-    //             unwrap wstEth and swap it for Eth on Curve before Uniswapping it for base
+    //             unwrap basic yvTokens (yvDai and yvUSDC)
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
@@ -38,11 +38,15 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
     ) external override {
         // we only borrow 1 token
         require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
-        uint256 fee = fee0 + fee1;
+        uint256 fee;
+        unchecked {
+            // Since one fee is always zero, this won't overflow
+            fee = fee0 + fee1;
+        }
 
         // decode, verify, and set debtToReturn
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
-        CallbackValidation.verifyCallback(factory, decoded.poolKey);
+        _verifyCallback(decoded.poolKey);
         uint256 debtToReturn = decoded.baseLoan + fee;
 
         // liquidate the vault
@@ -59,7 +63,7 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
             debtRecovered = underlyingRedeemed;
         } else {
             ISwapRouter swapRouter_ = swapRouter;
-            WETH9.safeApprove(address(swapRouter_), underlyingRedeemed);
+            decoded.collateral.safeApprove(address(swapRouter), underlyingRedeemed);
             debtRecovered = swapRouter_.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams({
                     tokenIn: underlyingAddress,
@@ -69,19 +73,21 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
                     recipient: address(this),
                     deadline: block.timestamp + 180,
                     amountIn: underlyingRedeemed,
-                    amountOutMinimum: 0,
+                    amountOutMinimum: debtToReturn,
                     sqrtPriceLimitX96: 0
                 })
             );
         }
-
         // if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
-            uint256 profit = debtRecovered - debtToReturn;
-            pay(decoded.base, address(this), recipient, profit);
+            uint256 profit;
+            unchecked {
+                profit = debtRecovered - debtToReturn;
+            }
+            decoded.base.safeTransfer(recipient, profit);
         }
-
         // repay flash loan
-        pay(decoded.base, address(this), msg.sender, debtToReturn);
+        decoded.base.safeTransfer(msg.sender, debtToReturn);
     }
+
 }
