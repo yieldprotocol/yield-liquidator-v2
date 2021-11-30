@@ -14,7 +14,7 @@ RUN mkdir -p src/bin \
     && ~/.cargo/bin/cargo build --release
 
 # copy sources and build
-COPY abi abi
+COPY abis abis
 COPY build.rs .
 COPY src src
 
