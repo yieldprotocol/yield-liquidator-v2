@@ -9,8 +9,8 @@ import { WstethFlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
  */
 ;(async () => {
   // UPDATE THESE TWO MANUALLY:
-  const flashLiquidatorAddress = '0x4EE6eCAD1c2Dae9f525404De8555724e3c35d07B'
-  const vaultId = '0x01d005a68c3903daa8e097b1'
+  const flashLiquidatorAddress = '0xfbC22278A96299D91d41C453234d97b4F5Eb9B2d'
+  const vaultId = '0x776160d44b7a09553c2732d3'
 
   const wethAddress = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
   const cauldronAddress = '0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867'

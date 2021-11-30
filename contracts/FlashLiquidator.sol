@@ -2,21 +2,29 @@
 
 pragma solidity >=0.8.6;
 
-import "@yield-protocol/utils-v2/contracts/interfaces/IWETH9.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
-import "./UniswapImports.sol";
+import "./IUniswapV3Pool.sol";
+import "./ISwapRouter.sol";
+import "./PoolAddress.sol";
+import "./TransferHelper.sol";
 
 
-/// @notice This is the standard Flash Liquidator contract used with Yield liquidator bots
-contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, PeripheryPayments {
+// @notice This is the standard Flash Liquidator used with Yield liquidator bots for most collateral types
+contract FlashLiquidator {
     using TransferHelper for address;
 
-    ISwapRouter public immutable swapRouter;
-    ICauldron public immutable cauldron;
-    IWitch public immutable witch;
-    address public immutable recipient;
+    // DAI  official token -- "otherToken" for UniV3Pool flash loan
+    address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    // WETH official token -- alternate "otherToken"
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+
+    address public immutable recipient;       // address to receive any profits
+    ICauldron public immutable cauldron;      // Yield Cauldron
+    IWitch public immutable witch;            // Yield Witch
+    address public immutable factory;         // UniswapV3 pool factory
+    ISwapRouter public immutable swapRouter;  // UniswapV3 swapRouter
 
     struct FlashCallbackData {
         bytes12 vaultId;
@@ -27,17 +35,18 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         PoolAddress.PoolKey poolKey;
     }
 
+    // @dev Parameter order matters
     constructor(
-        address _recipient,
-        ISwapRouter _swapRouter,
-        address _factory,
-        address _WETH9,
-        IWitch _witch
-    ) PeripheryImmutableState(_factory, _WETH9) {
-        swapRouter = _swapRouter;
-        witch = _witch;
-        cauldron = _witch.cauldron();
-        recipient = _recipient;
+        address recipient_,
+        IWitch witch_,
+        address factory_,
+        ISwapRouter swapRouter_
+    ) {
+        recipient = recipient_;
+        witch = witch_;
+        cauldron = witch_.cauldron();
+        factory = factory_;
+        swapRouter = swapRouter_;
     }
 
     function collateralToDebtRatio(bytes12 vaultId) public
@@ -49,10 +58,10 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         if (balances.art == 0) {
             return 0;
         }
-        /// The castings below can't overflow
+        // The castings below can't overflow
         int256 accruedDebt = int256(uint256(cauldron.debtToBase(vault.seriesId, balances.art)));
         int256 level = cauldron.level(vaultId);
-        int256 ratio = int256(uint256((cauldron.spotOracles(series.baseId, vault.ilkId)).ratio)) * 1e12; /// Convert from 6 to 18 decimals
+        int256 ratio = int256(uint256((cauldron.spotOracles(series.baseId, vault.ilkId)).ratio)) * 1e12; // Convert from 6 to 18 decimals
 
         level = (level * 1e18) / (accruedDebt * ratio);
         require(level >= 0, "level is negative");
@@ -67,36 +76,54 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
         return elapsed >= duration;
     }
 
-    /// @param fee0 The fee from calling flash for token0
-    /// @param fee1 The fee from calling flash for token1
-    /// @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
-    /// @notice implements the callback called from flash
+    // @notice Returns the address of a valid Uniswap V3 Pool
+    // @dev from 'uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol'
+    // @param poolKey The identifying key of the V3 pool
+    // @return pool The V3 pool contract address
+    function _verifyCallback(PoolAddress.PoolKey memory poolKey)
+        internal
+        view
+        returns (IUniswapV3Pool pool)
+    {
+        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+        require(msg.sender == address(pool), "Invalid caller");
+    }
+
+    // @param fee0 The fee from calling flash for token0
+    // @param fee1 The fee from calling flash for token1
+    // @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
+    // @notice implements the callback called from flash
+    // @dev this fn should be overwritten by subclasses for non-standard collateral types
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
         bytes calldata data
-    ) external virtual override {
-        /// we only borrow 1 token
+    ) external virtual {
+        // we only borrow 1 token
         require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
-        uint256 fee = fee0 + fee1;
+        uint256 fee;
+        unchecked {
+            // Since one fee is always zero, this won't overflow
+            fee = fee0 + fee1;
+        }
 
-        /// decode and verify
+        // decode and verify
         FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
-        CallbackValidation.verifyCallback(factory, decoded.poolKey);
+        _verifyCallback(decoded.poolKey);
 
-        /// liquidate the vault
+        // liquidate the vault
         decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
         uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);
 
-        /// sell the collateral
+        // sell the collateral
         uint256 debtToReturn = decoded.baseLoan + fee;
         decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
         uint256 debtRecovered = swapRouter.exactInputSingle(
             ISwapRouter.ExactInputSingleParams({
                 tokenIn: decoded.collateral,
                 tokenOut: decoded.base,
-                fee: 500,  /// can't use the same fee as the flash loan
-                           /// because of reentrancy protection
+                fee: 500,  // can't use the same fee as the flash loan
+                           // because of reentrancy protection
                 recipient: address(this),
                 deadline: block.timestamp + 180,
                 amountIn: collateralReceived,
@@ -105,53 +132,42 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
             })
         );
 
-        /// if profitable pay profits to recipient
+        // if profitable pay profits to recipient
         if (debtRecovered > debtToReturn) {
-            uint256 profit = debtRecovered - debtToReturn;
-            pay(decoded.base, address(this), recipient, profit);
+            uint256 profit;
+            unchecked {
+                profit = debtRecovered - debtToReturn;
+            }
+            decoded.base.safeTransfer(recipient, profit);
         }
-
-        /// repay flash loan
-        pay(decoded.base, address(this), msg.sender, debtToReturn);
+        // repay flash loan
+        decoded.base.safeTransfer(msg.sender, debtToReturn);
     }
 
-    /// @notice This internal function is called to determine the other token used in the Flash pool
-    /// @dev    Since we are only borrowing one token, the other token does not really matter as long
-    ///         as the pool exists and has liquidity.
-    ///         Other contracts override this fn when there are no Uni pools for the underlying collateral
-    /// @param  baseToken is the address of the series base in the vault being liquidated
-    /// @param  collateral is the address of the ilk in the vault being liquidated
-    /// @return otherToken address used to identify the other token in the pool besides the series base
-    function _getOtherToken(address baseToken, address collateral) internal virtual returns (address otherToken) {
-        return collateral;
-    }
-
-    /// @notice Liquidates a vault with help from a Uniswap v3 flash loan
-    /// @param vaultId The id of the vault to liquidate
+    // @notice Liquidates a vault with help from a Uniswap v3 flash loan
+    // @param vaultId The vault to liquidate
     function liquidate(bytes12 vaultId) external {
-        uint24 poolFee = 3000; /// 0.3%
-
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
         DataTypes.Balances memory balances = cauldron.balances(vaultId);
         DataTypes.Series memory series = cauldron.series(vault.seriesId);
         address baseToken = cauldron.assets(series.baseId);
-		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
+        uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
         address collateral = cauldron.assets(vault.ilkId);
 
-        /// We are only borrowing one token, so the other token doesn't matter as long
-        /// as the pool exists and has liquidity
-        address otherToken = _getOtherToken(baseToken, collateral);
+        // The flash loan only borrows one token, so the UniV3Pool that is selected only
+        // needs to have the baseToken in it. For the otherToken we prefer WETH or DAI
+        address otherToken = baseToken == WETH ? DAI : WETH;
 
-        /// tokens in PoolKey must be ordered
-        bool ordered = (otherToken < baseToken);
+        // tokens in PoolKey must be ordered
+        bool ordered = (baseToken < otherToken);
         PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({
-            token0: ordered ? otherToken : baseToken,
-            token1: ordered ? baseToken : otherToken,
-            fee: poolFee
+            token0: ordered ? baseToken : otherToken,
+            token1: ordered ? otherToken : baseToken,
+            fee: 3000 // 0.3%
         });
         IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 
-        /// data for the callback to know what to do
+        // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({
             vaultId: vaultId,
             base: baseToken,
@@ -161,11 +177,11 @@ contract FlashLiquidator is IUniswapV3FlashCallback, PeripheryImmutableState, Pe
             poolKey: poolKey
         });
 
-        /// initiate flash loan, with the liquidation logic embedded in the flash loan callback
+        // initiate flash loan, with the liquidation logic embedded in the flash loan callback
         pool.flash(
             address(this),
-            ordered ? 0 : baseLoan,
             ordered ? baseLoan : 0,
+            ordered ? 0 : baseLoan,
             abi.encode(
                 args
             )
