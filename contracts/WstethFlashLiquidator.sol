@@ -11,6 +11,18 @@ contract WstethFlashLiquidator is FlashLiquidator {
     using TransferHelper for address;
     using TransferHelper for IWstEth;
 
+    // @notice "i" and "j" are the first two parameters (token to sell and token to receive respectively)
+    //         in the CurveStableSwap.exchange function.  They represent that contract's internally stored
+    //         index of the token being swapped
+    // @dev    The STETH/ETH pool only supports two tokens: ETH index: 0, STETH index: 1
+    //         https://etherscan.io/address/0xDC24316b9AE028F1497c275EB9192a3Ea0f67022#readContract
+    //         This can be confirmed by calling the "coins" function on the CurveStableSwap contract
+    //         0 -> 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE == ETH (the address Curve uses to represent ETH -- see github link below)
+    //         1 -> 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84 == STETH (deployed contract address of STETH)
+    // https://github.com/curvefi/curve-contract/blob/b0bbf77f8f93c9c5f4e415bce9cd71f0cdee960e/contracts/pools/steth/StableSwapSTETH.vy#L143
+    int128 public constant CURVE_EXCHANGE_PARAMETER_I = 1; // token to sell (STETH, index 1 on Curve contract)
+    int128 public constant CURVE_EXCHANGE_PARAMETER_J = 0; // token to receive (ETH, index 0 on Curve contract)
+
     ICurveStableSwap public immutable curveSwap;  // Curve stEth/Eth pool
     IWstEth public immutable wstEth;              // Lido wrapped stEth contract address
     address public immutable stEth;               // stEth contract address
@@ -35,7 +47,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
         wstEth = wstEth_;
     }
 
-    // @dev Overrides PeripheryPayments.receive -> noop
+    // @dev Required to receive ETH from Curve
     receive() external payable {}
 
     // @param fee0 The fee from calling flash for token0
@@ -69,7 +81,12 @@ contract WstethFlashLiquidator is FlashLiquidator {
 
         // Step 2 - swap stEth for Eth on Curve
         stEth.safeApprove(address(curveSwap), unwrappedStEth);
-        uint256 ethReceived = curveSwap.exchange(1, 0, unwrappedStEth, 0);
+        uint256 ethReceived = curveSwap.exchange(
+            CURVE_EXCHANGE_PARAMETER_I,  // index 1 representing STETH
+            CURVE_EXCHANGE_PARAMETER_J,  // index 0 representing ETH
+            unwrappedStEth,              // amount to swap
+            0                            // no slippage guard
+        );
 
         // Step 3 -  wrap the Eth => Weth
         IWETH9(WETH).deposit{value: ethReceived}();
