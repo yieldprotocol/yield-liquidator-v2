@@ -13,7 +13,7 @@ use std::{
     collections::HashMap, io::Write, path::PathBuf, sync::Arc, time::SystemTime, time::UNIX_EPOCH,
 };
 use tokio::time::{sleep, Duration};
-use tracing::{debug_span, info, instrument, trace};
+use tracing::{debug_span, error, info, instrument, trace};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Default)]
