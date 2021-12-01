@@ -4,12 +4,12 @@ pragma solidity >=0.8.6;
 
 import "./FlashLiquidator.sol";
 import "./ICurveStableSwap.sol";
-import "./IWSTETH.sol";
+import "./IWstEth.sol";
 
 // @notice This is the Yield Flash liquidator contract for Lido Wrapped Staked Ether (WSTETH)
 contract WstethFlashLiquidator is FlashLiquidator {
     using TransferHelper for address;
-    using TransferHelper for IWSTETH;
+    using TransferHelper for IWstEth;
 
     // @notice "i" and "j" are the first two parameters (token to sell and token to receive respectively)
     //         in the CurveStableSwap.exchange function.  They represent that contract's internally stored
@@ -25,10 +25,10 @@ contract WstethFlashLiquidator is FlashLiquidator {
 
     // @notice stEth and wstEth deployed contracts https://docs.lido.fi/deployed-contracts/
     address public constant STETH  = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
-    IWSTETH public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
+    address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
     // @notice Curve stEth/Eth pool https://curve.readthedocs.io/ref-addresses.html
-    ICurveStableSwap public constant CURVE_SWAP = 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022;
+    address public constant CURVE_SWAP = 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022;
 
     constructor(
         address recipient_,
@@ -76,11 +76,11 @@ contract WstethFlashLiquidator is FlashLiquidator {
         // Sell collateral:
 
         // Step 1 - unwrap WSTETH => STETH
-        uint256 unwrappedStEth = WSTETH.unwrap(collateralReceived);
+        uint256 unwrappedStEth = IWstEth(WSTETH).unwrap(collateralReceived);
 
         // Step 2 - swap STETH for Eth on Curve
-        STETH.safeApprove(address(CURVE_SWAP), unwrappedStEth);
-        uint256 ethReceived = CURVE_SWAP.exchange(
+        STETH.safeApprove(CURVE_SWAP, unwrappedStEth);
+        uint256 ethReceived = ICurveStableSwap(CURVE_SWAP).exchange(
             CURVE_EXCHANGE_PARAMETER_I,  // index 1 representing STETH
             CURVE_EXCHANGE_PARAMETER_J,  // index 0 representing ETH
             unwrappedStEth,              // amount to swap
