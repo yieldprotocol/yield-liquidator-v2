@@ -42,7 +42,8 @@ crytic-export/
 # Typescript
 dist/
 
-/target
-
+# environments-v2  git submodule
 environments-v2/
+
+/target
 

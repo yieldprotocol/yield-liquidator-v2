@@ -14,8 +14,11 @@ import "./TransferHelper.sol";
 contract FlashLiquidator {
     using TransferHelper for address;
 
-    address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;             // DAI  official token -- "otherToken" for UniV3Pool flash loan
-    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;            // WETH official token -- alternate "otherToken"
+    // DAI  official token -- "otherToken" for UniV3Pool flash loan
+    address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    // WETH official token -- alternate "otherToken"
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
 
     address public immutable recipient;       // address to receive any profits
     ICauldron public immutable cauldron;      // Yield Cauldron
@@ -124,7 +127,7 @@ contract FlashLiquidator {
                 recipient: address(this),
                 deadline: block.timestamp + 180,
                 amountIn: collateralReceived,
-                amountOutMinimum: debtToReturn,
+                amountOutMinimum: debtToReturn, // bots will sandwich us and eat profits, we don't mind
                 sqrtPriceLimitX96: 0
             })
         );
