@@ -6,7 +6,7 @@ import "./FlashLiquidator.sol";
 import "./ICurveStableSwap.sol";
 import "./IWstEth.sol";
 
-// @notice This is the Yield Flash liquidator contract for Lido Wrapped Staked Ether (WstEth)
+// @notice This is the Yield Flash liquidator contract for Lido Wrapped Staked Ether (WSTETH)
 contract WstethFlashLiquidator is FlashLiquidator {
     using TransferHelper for address;
     using TransferHelper for IWstEth;
@@ -23,29 +23,24 @@ contract WstethFlashLiquidator is FlashLiquidator {
     int128 public constant CURVE_EXCHANGE_PARAMETER_I = 1; // token to sell (STETH, index 1 on Curve contract)
     int128 public constant CURVE_EXCHANGE_PARAMETER_J = 0; // token to receive (ETH, index 0 on Curve contract)
 
-    ICurveStableSwap public immutable curveSwap;  // Curve stEth/Eth pool
-    IWstEth public immutable wstEth;              // Lido wrapped stEth contract address
-    address public immutable stEth;               // stEth contract address
+    // @notice stEth and wstEth deployed contracts https://docs.lido.fi/deployed-contracts/
+    address public constant STETH  = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
+    address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
+
+    // @notice Curve stEth/Eth pool https://curve.readthedocs.io/ref-addresses.html
+    address public constant CURVE_SWAP = 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022;
 
     constructor(
         address recipient_,
         IWitch witch_,
         address factory_,
-        ISwapRouter swapRouter_,
-
-        ICurveStableSwap curveSwap_,
-        address stEth_,
-        IWstEth wstEth_
+        ISwapRouter swapRouter_
     ) FlashLiquidator(
         recipient_,
         witch_,
         factory_,
         swapRouter_
-    ) {
-        curveSwap = curveSwap_;
-        stEth = stEth_;
-        wstEth = wstEth_;
-    }
+    ) {}
 
     // @dev Required to receive ETH from Curve
     receive() external payable {}
@@ -55,7 +50,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
     // @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
     // @notice     implements the callback called from flash
     // @dev        Unlike the other Yield FlashLiquidator contracts, this contains extra steps to
-    //             unwrap wstEth and swap it for Eth on Curve before Uniswapping it for base
+    //             unwrap WSTETH and swap it for Eth on Curve before Uniswapping it for base
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
@@ -65,7 +60,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
         require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
         uint256 fee;
         unchecked {
-            // Since one fee is always zero, this won't overflow
+            // since one fee is always zero, this won't overflow
             fee = fee0 + fee1;
         }
 
@@ -80,12 +75,12 @@ contract WstethFlashLiquidator is FlashLiquidator {
 
         // Sell collateral:
 
-        // Step 1 - unwrap wstEth => stEth
-        uint256 unwrappedStEth = wstEth.unwrap(collateralReceived);
+        // Step 1 - unwrap WSTETH => STETH
+        uint256 unwrappedStEth = IWstEth(WSTETH).unwrap(collateralReceived);
 
-        // Step 2 - swap stEth for Eth on Curve
-        stEth.safeApprove(address(curveSwap), unwrappedStEth);
-        uint256 ethReceived = curveSwap.exchange(
+        // Step 2 - swap STETH for Eth on Curve
+        STETH.safeApprove(CURVE_SWAP, unwrappedStEth);
+        uint256 ethReceived = ICurveStableSwap(CURVE_SWAP).exchange(
             CURVE_EXCHANGE_PARAMETER_I,  // index 1 representing STETH
             CURVE_EXCHANGE_PARAMETER_J,  // index 0 representing ETH
             unwrappedStEth,              // amount to swap
@@ -93,7 +88,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
         );
 
         // Step 3 -  wrap the Eth => Weth
-        IWETH9(WETH).deposit{value: ethReceived}();
+        IWETH9(WETH).deposit{ value: ethReceived }();
 
         // Step 4 - if necessary, swap Weth for base on UniSwap
         uint256 debtRecovered;
@@ -111,7 +106,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
                     recipient: address(this),
                     deadline: block.timestamp + 180,
                     amountIn: ethReceived,
-                    amountOutMinimum: debtToReturn,
+                    amountOutMinimum: debtToReturn, // bots will sandwich us and eat profits, we don't mind
                     sqrtPriceLimitX96: 0
                 })
             );

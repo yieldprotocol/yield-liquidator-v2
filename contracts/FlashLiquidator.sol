@@ -127,7 +127,7 @@ contract FlashLiquidator {
                 recipient: address(this),
                 deadline: block.timestamp + 180,
                 amountIn: collateralReceived,
-                amountOutMinimum: debtToReturn,
+                amountOutMinimum: debtToReturn, // bots will sandwich us and eat profits, we don't mind
                 sqrtPriceLimitX96: 0
             })
         );

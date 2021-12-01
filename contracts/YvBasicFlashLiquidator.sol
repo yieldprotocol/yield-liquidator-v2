@@ -56,7 +56,7 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
         // redeem the yvToken for underlying
         address underlyingAddress = IYvToken(decoded.collateral).token();
         require(underlyingAddress != address(0), "underlying not found");
-        uint256 underlyingRedeemed = IYvToken(decoded.collateral).withdraw();  // defaults to max if no params passed
+        uint256 underlyingRedeemed = IYvToken(decoded.collateral).withdraw(); // defaults to max if no params passed
 
         uint256 debtRecovered;
         if (decoded.base == underlyingAddress) {
@@ -73,7 +73,7 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
                     recipient: address(this),
                     deadline: block.timestamp + 180,
                     amountIn: underlyingRedeemed,
-                    amountOutMinimum: debtToReturn,
+                    amountOutMinimum: debtToReturn, // bots will sandwich us and eat profits, we don't mind
                     sqrtPriceLimitX96: 0
                 })
             );

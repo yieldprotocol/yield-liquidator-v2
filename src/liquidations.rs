@@ -154,6 +154,7 @@ impl<M: Middleware> Liquidator<M> {
                 info!(tx_hash = ?tx_hash, gas_used = %receipt.gas_used.unwrap_or_default(), user = ?addr,
                     status = status, tx_type, instance_name, "confirmed");
             } else {
+                info!(tx_hash = ?tx_hash, "Bumping gas");
                 // Get the new gas price based on how much time passed since the
                 // tx was last broadcast
                 let new_gas_price = gas_escalator.get_gas_price(
@@ -167,17 +168,27 @@ impl<M: Middleware> Liquidator<M> {
 
                 // bump the gas price
                 if let TypedTransaction::Eip1559(x) = &mut replacement_tx.0 {
+                    // it should be reversed:
+                    // - max_fee_per_gas has to be constant
+                    // - max_priority_fee_per_gas needs to be bumped
                     x.max_fee_per_gas = Some(new_gas_price);
-                    x.max_priority_fee_per_gas = Some(new_gas_price); // 2 gwei
+                    x.max_priority_fee_per_gas = Some(U256::from(2000000000)); // 2 gwei
                 } else {
                     panic!("Non-Eip1559 transactions are not supported yet");
                 }
 
-                // rebroadcast (TODO: Can we avoid cloning?)
-                replacement_tx.1 = *client
+                // rebroadcast
+                match client
                     .send_transaction(replacement_tx.0.clone(), None)
-                    .await
-                    .map_err(ContractError::MiddlewareError)?;
+                    .await {
+                        Ok(tx) => {
+                            replacement_tx.1 = *tx;
+                        },
+                        Err(x) => {
+                            error!(tx=?replacement_tx, err=?x, "Failed to replace transaction: dropping it");
+                            pending_txs.remove(&addr);
+                        }
+                    }
 
                 info!(tx_hash = ?tx_hash, new_gas_price = %new_gas_price, user = ?addr,
                     tx_type, instance_name, "Bumping gas: done");
@@ -300,7 +311,7 @@ impl<M: Middleware> Liquidator<M> {
             }
             Err(err) => {
                 let err = err.to_string();
-                error!("Error: {}; data: {:?}", err, call.calldata());
+                error!("Buy error: {}; data: {:?}", err, call.calldata());
             }
         };
 
