@@ -4,12 +4,9 @@ pragma solidity >=0.8.6;
 
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "./IUniswapV3Pool.sol";
 import "./ISwapRouter.sol";
 import "./PoolAddress.sol";
-import "./CallbackValidation.sol";
 import "./TransferHelper.sol";
 
 
@@ -17,13 +14,14 @@ import "./TransferHelper.sol";
 contract FlashLiquidator {
     using TransferHelper for address;
 
+    address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;             // DAI  official token -- "otherToken" for UniV3Pool flash loan
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;            // WETH official token -- alternate "otherToken"
+
     address public immutable recipient;       // address to receive any profits
     ICauldron public immutable cauldron;      // Yield Cauldron
     IWitch public immutable witch;            // Yield Witch
     address public immutable factory;         // UniswapV3 pool factory
     ISwapRouter public immutable swapRouter;  // UniswapV3 swapRouter
-    address public immutable dai;             // DAI  official token -- "otherToken" for UniV3Pool flash loan
-    address public immutable weth;            // WETH official token -- alternate "otherToken"
 
     struct FlashCallbackData {
         bytes12 vaultId;
@@ -39,21 +37,8 @@ contract FlashLiquidator {
         address recipient_,
         IWitch witch_,
         address factory_,
-        ISwapRouter swapRouter_,
-        address dai_,
-        address weth_
+        ISwapRouter swapRouter_
     ) {
-        require(
-            keccak256(abi.encodePacked(IERC20Metadata(weth_).symbol())) == keccak256(abi.encodePacked("WETH")),
-            "Incorrect WETH address"
-        );
-        weth = weth_;
-        require(
-            keccak256(abi.encodePacked(IERC20Metadata(dai_).symbol())) == keccak256(abi.encodePacked("DAI")),
-            "Incorrect DAI address"
-        );
-        dai = dai_;
-
         recipient = recipient_;
         witch = witch_;
         cauldron = witch_.cauldron();
@@ -115,6 +100,7 @@ contract FlashLiquidator {
         require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
         uint256 fee;
         unchecked {
+            // Since one fee is always zero, this won't overflow
             fee = fee0 + fee1;
         }
 
@@ -149,10 +135,10 @@ contract FlashLiquidator {
             unchecked {
                 profit = debtRecovered - debtToReturn;
             }
-            TransferHelper.safeTransfer(decoded.base, recipient, profit);
+            decoded.base.safeTransfer(recipient, profit);
         }
         // repay flash loan
-        TransferHelper.safeTransfer(decoded.base, msg.sender, debtToReturn);
+        decoded.base.safeTransfer(msg.sender, debtToReturn);
     }
 
     // @notice Liquidates a vault with help from a Uniswap v3 flash loan
@@ -162,12 +148,12 @@ contract FlashLiquidator {
         DataTypes.Balances memory balances = cauldron.balances(vaultId);
         DataTypes.Series memory series = cauldron.series(vault.seriesId);
         address baseToken = cauldron.assets(series.baseId);
-		uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
+        uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
         address collateral = cauldron.assets(vault.ilkId);
 
         // The flash loan only borrows one token, so the UniV3Pool that is selected only
-        // needs to have the baseToken in it.  For the otherToken we prefer WETH or DAI
-        address otherToken = baseToken == weth ? dai : weth;
+        // needs to have the baseToken in it. For the otherToken we prefer WETH or DAI
+        address otherToken = baseToken == WETH ? DAI : WETH;
 
         // tokens in PoolKey must be ordered
         bool ordered = (baseToken < otherToken);
