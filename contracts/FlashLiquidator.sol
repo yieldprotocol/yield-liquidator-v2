@@ -46,6 +46,11 @@ contract FlashLiquidator {
         swapRouter = swapRouter_;
     }
 
+    // @notice This is used by the bot to determine the current collateral to debt ratio
+    // @dev    Cauldron.level returns collateral * price(collateral, denominator=debt) - debt * ratio * accrual
+    //         but the bot needs collateral * price(collateral, denominator=debt)/debt * accrual
+    // @param  vaultId id of vault to check
+    // @return adjusted collateralization level
     function collateralToDebtRatio(bytes12 vaultId) public
     returns (uint256) {
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
@@ -65,6 +70,9 @@ contract FlashLiquidator {
         return uint256(level);
     }
 
+    // @notice This is used by the bot to determine if the auction price has reached the final, minimum price yet
+    // @param  vaultId id of vault to check
+    // @return True if it has reached minimal price
     function isAtMinimalPrice(bytes12 vaultId) public returns (bool) {
         bytes6 ilkId = (cauldron.vaults(vaultId)).ilkId;
         (uint32 duration, ) = witch.ilks(ilkId);
