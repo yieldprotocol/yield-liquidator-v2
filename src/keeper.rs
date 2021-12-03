@@ -50,6 +50,7 @@ impl<M: Middleware> Keeper<M> {
         multicall: Option<Address>,
         min_ratio: u16,
         gas_escalator: GeometricGasPrice,
+        bump_gas_delay: u64,
         state: Option<State>,
         instance_name: String
     ) -> Result<Keeper<M>, M> {
@@ -71,6 +72,7 @@ impl<M: Middleware> Keeper<M> {
             client.clone(),
             auctions,
             gas_escalator,
+            bump_gas_delay,
             instance_name.clone()
         )
         .await;

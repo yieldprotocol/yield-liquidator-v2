@@ -36,6 +36,9 @@ struct Opts {
     #[options(help = "the minimum ratio (collateral/debt) to trigger liquidation, percents", default = "110")]
     min_ratio: u16,
 
+    #[options(help = "Don't bump gas until the transaction is this many seconds old", default = "90")]
+    bump_gas_delay: u64,
+
     #[options(help = "the block to start watching from")]
     start_block: Option<u64>,
 
@@ -148,6 +151,7 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         cfg.multicall,
         opts.min_ratio,
         gas_escalator,
+        opts.bump_gas_delay,
         state,
         format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan)
     )
