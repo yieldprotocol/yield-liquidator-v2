@@ -2,6 +2,7 @@ import *  as fs from 'fs'
 import * as path from 'path'
 
 import '@nomiclabs/hardhat-waffle'
+import "@nomiclabs/hardhat-ethers";
 import '@nomiclabs/hardhat-etherscan'
 import 'hardhat-abi-exporter'
 import 'hardhat-contract-sizer'
@@ -9,7 +10,7 @@ import 'hardhat-gas-reporter'
 import 'hardhat-typechain'
 import 'solidity-coverage'
 import 'hardhat-deploy'
-import { task } from 'hardhat/config'
+import 'hardhat-dapptools'
 
 // import { addAsset, makeBase, makeIlk, addSeries } from './scripts/add'
 
@@ -124,6 +125,7 @@ module.exports = {
   },
   networks: {
     hardhat: {
+      accounts,
       chainId: 31337
     },
     localhost: {

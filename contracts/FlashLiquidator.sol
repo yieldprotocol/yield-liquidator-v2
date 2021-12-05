@@ -130,7 +130,7 @@ contract FlashLiquidator {
             ISwapRouter.ExactInputSingleParams({
                 tokenIn: decoded.collateral,
                 tokenOut: decoded.base,
-                fee: 500,  // can't use the same fee as the flash loan
+                fee: 3000,  // can't use the same fee as the flash loan
                            // because of reentrancy protection
                 recipient: address(this),
                 deadline: block.timestamp + 180,
@@ -171,7 +171,7 @@ contract FlashLiquidator {
         PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({
             token0: ordered ? baseToken : otherToken,
             token1: ordered ? otherToken : baseToken,
-            fee: 3000 // 0.3%
+            fee: 500 // 0.3%
         });
         IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 

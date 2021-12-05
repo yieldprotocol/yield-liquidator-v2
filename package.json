@@ -21,7 +21,7 @@
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "@openzeppelin/contracts": "^4.1.0",
     "@truffle/hdwallet-provider": "^1.0.40",
-    "@types/mocha": "^8.0.0",
+    "@types/mocha": "^9.0.0",
     "@yield-protocol/utils-v2": "2.4.6",
     "@yield-protocol/vault-interfaces": "2.3.2",
     "@yield-protocol/vault-v2": "0.11.0-rc8",
@@ -32,7 +32,8 @@
     "hardhat": "^2.6.0",
     "hardhat-abi-exporter": "^2.0.3",
     "hardhat-contract-sizer": "^2.0.3",
-    "hardhat-deploy": "^0.7.0-beta.44",
+    "hardhat-dapptools": "https://github.com/yieldprotocol/hardhat-dapptools.git",
+    "hardhat-deploy": "^0.9.14",
     "hardhat-gas-reporter": "^1.0.3",
     "hardhat-typechain": "^0.3.4",
     "mocha": "^7.1.0",
@@ -40,7 +41,7 @@
     "solhint": "^3.3.3",
     "solidity-coverage": "^0.7.14",
     "ts-node": "^8.10.2",
-    "tsdx": "^0.14.1",
+    "tslog": "^3.3.0",
     "typechain": "^4.0.1",
     "typechain-target-ethers-v5": "^5.0.1",
     "typescript": "^3.9.7",
@@ -57,6 +58,7 @@
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/yieldprotocol/environments-v2#readme",
   "dependencies": {
+    "@types/chai": "^4.2.22",
     "latest": "^0.2.0"
   }
 }
