@@ -20,7 +20,6 @@ contract FlashLiquidator {
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
 
-    address public immutable recipient;       // address to receive any profits
     ICauldron public immutable cauldron;      // Yield Cauldron
     IWitch public immutable witch;            // Yield Witch
     address public immutable factory;         // UniswapV3 pool factory
@@ -33,16 +32,15 @@ contract FlashLiquidator {
         uint256 baseLoan;
         address baseJoin;
         PoolAddress.PoolKey poolKey;
+        address recipient;
     }
 
     // @dev Parameter order matters
     constructor(
-        address recipient_,
         IWitch witch_,
         address factory_,
         ISwapRouter swapRouter_
     ) {
-        recipient = recipient_;
         witch = witch_;
         cauldron = witch_.cauldron();
         factory = factory_;
@@ -146,7 +144,7 @@ contract FlashLiquidator {
             unchecked {
                 profit = debtRecovered - debtToReturn;
             }
-            decoded.base.safeTransfer(recipient, profit);
+            decoded.base.safeTransfer(decoded.recipient, profit);
         }
         // repay flash loan
         decoded.base.safeTransfer(msg.sender, debtToReturn);
@@ -155,6 +153,8 @@ contract FlashLiquidator {
     // @notice Liquidates a vault with help from a Uniswap v3 flash loan
     // @param vaultId The vault to liquidate
     function liquidate(bytes12 vaultId) external {
+        (, uint32 start) = witch.auctions(vaultId);
+        require(start > 0, "Vault not under auction");
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
         DataTypes.Balances memory balances = cauldron.balances(vaultId);
         DataTypes.Series memory series = cauldron.series(vault.seriesId);
@@ -182,7 +182,8 @@ contract FlashLiquidator {
             collateral: collateral,
             baseLoan: baseLoan,
             baseJoin: address(witch.ladle().joins(series.baseId)),
-            poolKey: poolKey
+            poolKey: poolKey,
+            recipient: msg.sender   // We will get front-run by generalized front-runners, this is desired as it reduces our gas costs
         });
 
         // initiate flash loan, with the liquidation logic embedded in the flash loan callback
