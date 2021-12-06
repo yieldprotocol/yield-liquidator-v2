@@ -48,7 +48,7 @@ async function deploy_flash_liquidator(): Promise<[SignerWithAddress, FlashLiqui
     const flFactory = await ethers.getContractFactory("FlashLiquidator") as FlashLiquidator__factory;
 
 
-    const liquidator = await flFactory.deploy(owner.address, g_witch, g_uni_factory, g_uni_router) as FlashLiquidator
+    const liquidator = await flFactory.deploy(g_witch, g_uni_factory, g_uni_router) as FlashLiquidator
     return [owner, liquidator];
 }
 
