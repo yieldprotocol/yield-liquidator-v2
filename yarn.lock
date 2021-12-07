@@ -5677,10 +5677,6 @@ hardhat-contract-sizer@^2.0.3:
     cli-table3 "^0.6.0"
     colors "^1.4.0"
 
-"hardhat-dapptools@https://github.com/yieldprotocol/hardhat-dapptools.git":
-  version "0.1.0"
-  resolved "https://github.com/yieldprotocol/hardhat-dapptools.git#e77b0d9e158ab72090643b433c7aa294a6fc9a5e"
-
 hardhat-deploy@^0.9.14:
   version "0.9.14"
   resolved "https://registry.yarnpkg.com/hardhat-deploy/-/hardhat-deploy-0.9.14.tgz#88c07497efd14cfca6f9fed1574f0bad65f0a8a0"

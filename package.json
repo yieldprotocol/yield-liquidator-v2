@@ -1,4 +1,7 @@
 {
+  "engines": {
+    "node": ">=12"
+  },
   "name": "@yield-protocol/flash-liquidator",
   "version": "0.0.1",
   "description": "Yield Flash Liquidator",
@@ -32,7 +35,6 @@
     "hardhat": "^2.6.0",
     "hardhat-abi-exporter": "^2.0.3",
     "hardhat-contract-sizer": "^2.0.3",
-    "hardhat-dapptools": "https://github.com/yieldprotocol/hardhat-dapptools.git",
     "hardhat-deploy": "^0.9.14",
     "hardhat-gas-reporter": "^1.0.3",
     "hardhat-typechain": "^0.3.4",
