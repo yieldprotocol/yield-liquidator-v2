@@ -14,12 +14,10 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
     using TransferHelper for address;
 
     constructor(
-        address recipient_,
         IWitch witch_,
         address factory_,
         ISwapRouter swapRouter_
     ) FlashLiquidator(
-        recipient_,
         witch_,
         factory_,
         swapRouter_
@@ -84,7 +82,7 @@ contract YvBasicFlashLiquidator is FlashLiquidator {
             unchecked {
                 profit = debtRecovered - debtToReturn;
             }
-            decoded.base.safeTransfer(recipient, profit);
+            decoded.base.safeTransfer(decoded.recipient, profit);
         }
         // repay flash loan
         decoded.base.safeTransfer(msg.sender, debtToReturn);
