@@ -28,7 +28,7 @@ const { deployContract } = waffle
     ])
   }
 
-  const args = [recipient, witch, factory, swapRouter]
+  const args = [witch, factory, swapRouter]
   let flashLiquidator = (await deployContract(ownerAcc, YvBasicFlashLiquidatorArtifact, args)) as YvBasicFlashLiquidator
   console.log(`FlashLiquidator deployed at ${flashLiquidator.address}`)
   console.log(`npx hardhat verify --network ${network.name} ${flashLiquidator.address} ${args.join(' ')}`)

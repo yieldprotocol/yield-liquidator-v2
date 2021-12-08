@@ -15,10 +15,12 @@ use ethers::{
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, sync::Arc, time::Instant};
+use std::{collections::HashMap, fmt, ops::Mul, sync::Arc, time::Instant};
 use tracing::{debug, debug_span, error, info, trace, warn, instrument};
 
 pub type AuctionMap = HashMap<VaultIdType, bool>;
+
+use std::ops::Div;
 
 
 #[derive(Clone)]
@@ -37,9 +39,13 @@ pub struct Liquidator<M> {
     /// The minimum ratio (collateral/debt) to trigger liquidation
     min_ratio: u16,
 
+    // extra gas to use for txs, as percent of estimated gas cost
+    gas_boost: u16,
+
     pending_liquidations: HashMap<VaultIdType, PendingTransaction>,
     pending_auctions: HashMap<VaultIdType, PendingTransaction>,
     gas_escalator: GeometricGasPrice,
+    bump_gas_delay: u64,
 
     instance_name: String
 }
@@ -85,9 +91,11 @@ impl<M: Middleware> Liquidator<M> {
         flashloan: Address,
         multicall: Option<Address>,
         min_ratio: u16,
+        gas_boost: u16,
         client: Arc<M>,
         auctions: AuctionMap,
         gas_escalator: GeometricGasPrice,
+        bump_gas_delay: u64,
         instance_name: String
     ) -> Self {
         let multicall = Multicall::new(client.clone(), multicall)
@@ -100,11 +108,13 @@ impl<M: Middleware> Liquidator<M> {
             flash_liquidator: FlashLiquidator::new(flashloan, client.clone()),
             multicall,
             min_ratio,
+            gas_boost,
             auctions,
 
             pending_liquidations: HashMap::new(),
             pending_auctions: HashMap::new(),
             gas_escalator,
+            bump_gas_delay,
             instance_name
         }
     }
@@ -118,9 +128,13 @@ impl<M: Middleware> Liquidator<M> {
         let liquidator_client = self.liquidator.client();
         // Check all the pending liquidations
         Liquidator::remove_or_bump_inner(now, liquidator_client, &self.gas_escalator,
-            &mut self.pending_liquidations, "liquidations", self.instance_name.as_ref()).await?;
+            &mut self.pending_liquidations, "liquidations",
+            self.instance_name.as_ref(),
+            self.bump_gas_delay).await?;
         Liquidator::remove_or_bump_inner(now, liquidator_client, &self.gas_escalator,
-            &mut self.pending_auctions, "auctions", self.instance_name.as_ref()).await?;
+            &mut self.pending_auctions, "auctions",
+            self.instance_name.as_ref(),
+            self.bump_gas_delay).await?;
 
         Ok(())
     }
@@ -131,7 +145,8 @@ impl<M: Middleware> Liquidator<M> {
         gas_escalator: &GeometricGasPrice,
         pending_txs: &mut HashMap<K, PendingTransaction>,
         tx_type: &str,
-        instance_name: &str
+        instance_name: &str,
+        bump_gas_delay: u64
         ) -> Result<(), M> {
         for (addr, (pending_tx_wrapper, tx_hash, instant)) in pending_txs.clone().into_iter() {
             let pending_tx = match pending_tx_wrapper {
@@ -154,44 +169,49 @@ impl<M: Middleware> Liquidator<M> {
                 info!(tx_hash = ?tx_hash, gas_used = %receipt.gas_used.unwrap_or_default(), user = ?addr,
                     status = status, tx_type, instance_name, "confirmed");
             } else {
-                info!(tx_hash = ?tx_hash, "Bumping gas");
-                // Get the new gas price based on how much time passed since the
-                // tx was last broadcast
-                let new_gas_price = gas_escalator.get_gas_price(
-                    pending_tx.max_fee_per_gas.expect("max_fee_per_gas price must be set"),
-                    now.duration_since(instant).as_secs(),
-                );
+                let time_since = now.duration_since(instant).as_secs();
+                if time_since > bump_gas_delay {
+                    info!(tx_hash = ?tx_hash, "Bumping gas");
+                    // Get the new gas price based on how much time passed since the
+                    // tx was last broadcast
+                    let new_gas_price = gas_escalator.get_gas_price(
+                        pending_tx.max_fee_per_gas.expect("max_fee_per_gas price must be set"),
+                        now.duration_since(instant).as_secs(),
+                    );
 
-                let replacement_tx = pending_txs
-                    .get_mut(&addr)
-                    .expect("tx will always be found since we're iterating over the map");
+                    let replacement_tx = pending_txs
+                        .get_mut(&addr)
+                        .expect("tx will always be found since we're iterating over the map");
 
-                // bump the gas price
-                if let TypedTransaction::Eip1559(x) = &mut replacement_tx.0 {
-                    // it should be reversed:
-                    // - max_fee_per_gas has to be constant
-                    // - max_priority_fee_per_gas needs to be bumped
-                    x.max_fee_per_gas = Some(new_gas_price);
-                    x.max_priority_fee_per_gas = Some(U256::from(2000000000)); // 2 gwei
-                } else {
-                    panic!("Non-Eip1559 transactions are not supported yet");
-                }
-
-                // rebroadcast
-                match client
-                    .send_transaction(replacement_tx.0.clone(), None)
-                    .await {
-                        Ok(tx) => {
-                            replacement_tx.1 = *tx;
-                        },
-                        Err(x) => {
-                            error!(tx=?replacement_tx, err=?x, "Failed to replace transaction: dropping it");
-                            pending_txs.remove(&addr);
-                        }
+                    // bump the gas price
+                    if let TypedTransaction::Eip1559(x) = &mut replacement_tx.0 {
+                        // it should be reversed:
+                        // - max_fee_per_gas has to be constant
+                        // - max_priority_fee_per_gas needs to be bumped
+                        x.max_fee_per_gas = Some(new_gas_price);
+                        x.max_priority_fee_per_gas = Some(U256::from(2000000000)); // 2 gwei
+                    } else {
+                        panic!("Non-Eip1559 transactions are not supported yet");
                     }
 
-                info!(tx_hash = ?tx_hash, new_gas_price = %new_gas_price, user = ?addr,
-                    tx_type, instance_name, "Bumping gas: done");
+                    // rebroadcast
+                    match client
+                        .send_transaction(replacement_tx.0.clone(), None)
+                        .await {
+                            Ok(tx) => {
+                                replacement_tx.1 = *tx;
+                            },
+                            Err(x) => {
+                                error!(tx=?replacement_tx, err=?x, "Failed to replace transaction: dropping it");
+                                pending_txs.remove(&addr);
+                            }
+                        }
+
+                    info!(tx_hash = ?tx_hash, new_gas_price = %new_gas_price, user = ?addr,
+                        tx_type, instance_name, "Bumping gas: done");
+                    } else {
+                        info!(tx_hash = ?tx_hash, time_since, bump_gas_delay, instance_name, "Bumping gas: too early");
+                    }
             }
         }
 
@@ -225,10 +245,17 @@ impl<M: Middleware> Liquidator<M> {
             self.auctions.insert(vault_id, true);
 
             trace!(vault_id=?hex::encode(vault_id), "Buying");
-            let is_still_valid: bool = self.buy(vault_id, Instant::now(), gas_price).await?;
-            if !is_still_valid {
-                info!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Removing no longer valid auction");
-                self.auctions.remove(&vault_id);
+            match self.buy(vault_id, Instant::now(), gas_price).await {
+                Ok(is_still_valid) => {
+                    if !is_still_valid {
+                        info!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Removing no longer valid auction");
+                        self.auctions.remove(&vault_id);
+                    }        
+                }
+                Err(x) => {
+                    error!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), 
+                        error=?x, "Failed to buy");
+                }
             }
         }
 
@@ -295,16 +322,22 @@ impl<M: Middleware> Liquidator<M> {
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
         let _enter = span.enter();
 
-        let call = self.flash_liquidator.liquidate(vault_id)
+        let raw_call = self.flash_liquidator.liquidate(vault_id);
+        let gas_estimation = raw_call.estimate_gas().await?;
+        let gas = gas_estimation.mul(U256::from(self.gas_boost + 100)).div(100);
+        let call = raw_call
             .gas_price(gas_price)
-            .block(BlockNumber::Pending);
+            .gas(gas);
 
         let tx = call.tx.clone();
 
         match call.send().await {
             Ok(hash) => {
                 // record the tx
-                info!(tx_hash = ?hash, instance_name=self.instance_name.as_str(), "Submitted buy order");
+                info!(tx_hash = ?hash,
+                    instance_name=self.instance_name.as_str(),
+                    gas=?gas,
+                    "Submitted buy order");
                 self.pending_auctions
                     .entry(vault_id)
                     .or_insert((tx, *hash, now));
@@ -357,7 +390,9 @@ impl<M: Middleware> Liquidator<M> {
                 let tx = call.tx.clone();
                 match call.send().await {
                     Ok(tx_hash) => {
-                        info!(tx_hash = ?tx_hash, vault_id = ?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Submitted liquidation");
+                        info!(tx_hash = ?tx_hash,
+                            vault_id = ?hex::encode(vault_id), 
+                            instance_name=self.instance_name.as_str(), "Submitted liquidation");
                         self.pending_liquidations
                             .entry(*vault_id)
                             .or_insert((tx, *tx_hash, now));
