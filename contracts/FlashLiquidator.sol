@@ -4,15 +4,15 @@ pragma solidity >=0.8.6;
 
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
-import "./IUniswapV3Pool.sol";
+import "uniswapv3-oracle/contracts/uniswapv0.8/IUniswapV3Pool.sol";
+import "uniswapv3-oracle/contracts/uniswapv0.8/PoolAddress.sol";
+import "./UniswapTransferHelper.sol";
 import "./ISwapRouter.sol";
-import "./PoolAddress.sol";
-import "./TransferHelper.sol";
 
 
 // @notice This is the standard Flash Liquidator used with Yield liquidator bots for most collateral types
 contract FlashLiquidator {
-    using TransferHelper for address;
+    using UniswapTransferHelper for address;
 
     // DAI  official token -- "otherToken" for UniV3Pool flash loan
     address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
