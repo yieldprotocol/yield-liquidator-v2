@@ -1,6 +1,6 @@
 {
   "name": "@yield-protocol/yield-liquidator-v2",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Yield Flash Liquidator",
   "main": "index.js",
   "author": "Yield Inc.",
