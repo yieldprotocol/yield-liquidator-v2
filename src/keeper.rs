@@ -13,7 +13,7 @@ use std::{
     collections::HashMap, io::Write, path::PathBuf, sync::Arc, time::SystemTime, time::UNIX_EPOCH,
 };
 use tokio::time::{sleep, Duration};
-use tracing::{debug_span, error, info, instrument, trace};
+use tracing::{debug_span, info, instrument, trace};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Default)]
@@ -37,7 +37,7 @@ pub struct Keeper<M> {
 
     borrowers: Borrowers<M>,
     liquidator: Liquidator<M>,
-    instance_name: String
+    instance_name: String,
 }
 
 impl<M: Middleware> Keeper<M> {
@@ -49,10 +49,11 @@ impl<M: Middleware> Keeper<M> {
         flashloan: Address,
         multicall: Option<Address>,
         min_ratio: u16,
+        gas_boost: u16,
         gas_escalator: GeometricGasPrice,
         bump_gas_delay: u64,
         state: Option<State>,
-        instance_name: String
+        instance_name: String,
     ) -> Result<Keeper<M>, M> {
         let (vaults, auctions, last_block) = match state {
             Some(state) => (state.vaults, state.auctions, state.last_block.into()),
@@ -60,20 +61,27 @@ impl<M: Middleware> Keeper<M> {
         };
         let witch = Witch::new(liquidations, client.clone());
         let controller = witch.cauldron().call().await?;
-        let borrowers =
-            Borrowers::new(controller, liquidations, multicall, client.clone(), vaults, 
-            instance_name.clone()).await;
+        let borrowers = Borrowers::new(
+            controller,
+            liquidations,
+            multicall,
+            client.clone(),
+            vaults,
+            instance_name.clone(),
+        )
+        .await;
         let liquidator = Liquidator::new(
             controller,
             liquidations,
             flashloan,
             multicall,
             min_ratio,
+            gas_boost,
             client.clone(),
             auctions,
             gas_escalator,
             bump_gas_delay,
-            instance_name.clone()
+            instance_name.clone(),
         )
         .await;
 
@@ -82,15 +90,11 @@ impl<M: Middleware> Keeper<M> {
             borrowers,
             liquidator,
             last_block,
-            instance_name: instance_name.clone()
+            instance_name: instance_name.clone(),
         })
     }
 
-    pub async fn run(
-        &mut self,
-        fname: PathBuf,
-        start_block: Option<u64>
-    ) -> Result<(), M> {
+    pub async fn run(&mut self, fname: PathBuf, start_block: Option<u64>) -> Result<(), M> {
         // Create the initial list of borrowers from the start_block, if provided
         if let Some(start_block) = start_block {
             self.last_block = start_block.into();
@@ -107,7 +111,7 @@ impl<M: Middleware> Keeper<M> {
 
         let mut maybe_last_block_number: Option<u64> = None;
 
-        let span = debug_span!("run", instance_name=self.instance_name.as_str());
+        let span = debug_span!("run", instance_name = self.instance_name.as_str());
         let _enter = span.enter();
         loop {
             sleep(Duration::from_secs(30)).await; // don't spin
@@ -146,7 +150,7 @@ impl<M: Middleware> Keeper<M> {
                                         timestamp = block_timestamp,
                                         delay_seconds =
                                             current_time.as_secs() as i64 - block_timestamp,
-                                            instance_name=self.instance_name.as_str(),
+                                        instance_name = self.instance_name.as_str(),
                                         "New block"
                                     );
                                 }
@@ -154,14 +158,18 @@ impl<M: Middleware> Keeper<M> {
                                     info!(
                                         block_number = block_number.as_u64(),
                                         timestamp = block_timestamp,
-                                        instance_name=self.instance_name.as_str(),
+                                        instance_name = self.instance_name.as_str(),
                                         "New block"
                                     );
                                 }
                             }
                         }
                         None => {
-                            info!(block_number = block_number.as_u64(), instance_name=self.instance_name.as_str(), "New block");
+                            info!(
+                                block_number = block_number.as_u64(),
+                                instance_name = self.instance_name.as_str(),
+                                "New block"
+                            );
                         }
                     }
 
@@ -203,6 +211,16 @@ impl<M: Middleware> Keeper<M> {
                 }
             }
         }
+    }
+
+    #[instrument(skip(self), fields(self.instance_name))]
+    pub async fn one_shot(&mut self) -> Result<(), M> {
+        let block_number = self
+            .client
+            .get_block_number()
+            .await
+            .map_err(ContractError::MiddlewareError)?;
+        return self.on_block(block_number).await;
     }
 
     /// Runs the liquidation business logic for the specified block

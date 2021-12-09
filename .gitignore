@@ -13,12 +13,13 @@ package/
 cache
 artifacts
 node_modules/
-abi/
+abis/
 output/
 typechain/
 deployments/
 
 # Secret files
+.alchemyKey
 .etherscanKey
 .infuraKey
 .mythxKey

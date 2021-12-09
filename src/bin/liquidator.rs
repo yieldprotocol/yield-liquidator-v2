@@ -36,6 +36,9 @@ struct Opts {
     #[options(help = "the minimum ratio (collateral/debt) to trigger liquidation, percents", default = "110")]
     min_ratio: u16,
 
+    #[options(help = "extra gas to use for transactions, percent of estimated gas", default = "10")]
+    gas_boost: u16,
+
     #[options(help = "Don't bump gas until the transaction is this many seconds old", default = "90")]
     bump_gas_delay: u64,
 
@@ -44,6 +47,9 @@ struct Opts {
 
     #[options(default="false", help="Use JSON as log format")]
     json_log: bool,
+
+    #[options(default="false", help="Only run 1 iteration and exit")]
+    one_shot: bool,
 
     #[options(
         help = "Instance name (used for logging)",
@@ -101,7 +107,6 @@ async fn main_impl() -> anyhow::Result<()> {
 async fn main() {
     match main_impl().await {
         Ok(_) => {
-            println!("Done!");
             std::process::exit(exitcode::OK);
         }
         Err(e) => {
@@ -150,14 +155,18 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         cfg.flashloan,
         cfg.multicall,
         opts.min_ratio,
+        opts.gas_boost,
         gas_escalator,
         opts.bump_gas_delay,
         state,
         format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan)
-    )
-    .await?;
+    ).await?;
 
-    keeper.run(opts.file, opts.start_block).await?;
+    if opts.one_shot {
+        keeper.one_shot().await?;
+    } else {
+        keeper.run(opts.file, opts.start_block).await?;
+    }
 
     Ok(())
 }

@@ -15,10 +15,12 @@ use ethers::{
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, sync::Arc, time::Instant};
+use std::{collections::HashMap, fmt, ops::Mul, sync::Arc, time::Instant};
 use tracing::{debug, debug_span, error, info, trace, warn, instrument};
 
 pub type AuctionMap = HashMap<VaultIdType, bool>;
+
+use std::ops::Div;
 
 
 #[derive(Clone)]
@@ -36,6 +38,9 @@ pub struct Liquidator<M> {
 
     /// The minimum ratio (collateral/debt) to trigger liquidation
     min_ratio: u16,
+
+    // extra gas to use for txs, as percent of estimated gas cost
+    gas_boost: u16,
 
     pending_liquidations: HashMap<VaultIdType, PendingTransaction>,
     pending_auctions: HashMap<VaultIdType, PendingTransaction>,
@@ -86,6 +91,7 @@ impl<M: Middleware> Liquidator<M> {
         flashloan: Address,
         multicall: Option<Address>,
         min_ratio: u16,
+        gas_boost: u16,
         client: Arc<M>,
         auctions: AuctionMap,
         gas_escalator: GeometricGasPrice,
@@ -102,6 +108,7 @@ impl<M: Middleware> Liquidator<M> {
             flash_liquidator: FlashLiquidator::new(flashloan, client.clone()),
             multicall,
             min_ratio,
+            gas_boost,
             auctions,
 
             pending_liquidations: HashMap::new(),
@@ -238,10 +245,17 @@ impl<M: Middleware> Liquidator<M> {
             self.auctions.insert(vault_id, true);
 
             trace!(vault_id=?hex::encode(vault_id), "Buying");
-            let is_still_valid: bool = self.buy(vault_id, Instant::now(), gas_price).await?;
-            if !is_still_valid {
-                info!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Removing no longer valid auction");
-                self.auctions.remove(&vault_id);
+            match self.buy(vault_id, Instant::now(), gas_price).await {
+                Ok(is_still_valid) => {
+                    if !is_still_valid {
+                        info!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Removing no longer valid auction");
+                        self.auctions.remove(&vault_id);
+                    }        
+                }
+                Err(x) => {
+                    error!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), 
+                        error=?x, "Failed to buy");
+                }
             }
         }
 
@@ -308,16 +322,22 @@ impl<M: Middleware> Liquidator<M> {
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
         let _enter = span.enter();
 
-        let call = self.flash_liquidator.liquidate(vault_id)
+        let raw_call = self.flash_liquidator.liquidate(vault_id);
+        let gas_estimation = raw_call.estimate_gas().await?;
+        let gas = gas_estimation.mul(U256::from(self.gas_boost + 100)).div(100);
+        let call = raw_call
             .gas_price(gas_price)
-            .block(BlockNumber::Pending);
+            .gas(gas);
 
         let tx = call.tx.clone();
 
         match call.send().await {
             Ok(hash) => {
                 // record the tx
-                info!(tx_hash = ?hash, instance_name=self.instance_name.as_str(), "Submitted buy order");
+                info!(tx_hash = ?hash,
+                    instance_name=self.instance_name.as_str(),
+                    gas=?gas,
+                    "Submitted buy order");
                 self.pending_auctions
                     .entry(vault_id)
                     .or_insert((tx, *hash, now));
@@ -370,7 +390,9 @@ impl<M: Middleware> Liquidator<M> {
                 let tx = call.tx.clone();
                 match call.send().await {
                     Ok(tx_hash) => {
-                        info!(tx_hash = ?tx_hash, vault_id = ?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Submitted liquidation");
+                        info!(tx_hash = ?tx_hash,
+                            vault_id = ?hex::encode(vault_id), 
+                            instance_name=self.instance_name.as_str(), "Submitted liquidation");
                         self.pending_liquidations
                             .entry(*vault_id)
                             .or_insert((tx, *tx_hash, now));
