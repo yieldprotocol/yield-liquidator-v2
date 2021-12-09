@@ -3,7 +3,12 @@
     "inputs": [
       {
         "internalType": "address",
-        "name": "asset_",
+        "name": "governor",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "executor",
         "type": "address"
       }
     ],
@@ -15,12 +20,57 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "eta",
+        "type": "uint32"
+      }
+    ],
+    "name": "Approved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "uint256",
-        "name": "fee",
+        "name": "delay",
         "type": "uint256"
       }
     ],
-    "name": "FlashFeeFactorSet",
+    "name": "DelaySet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "Executed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "Proposed",
     "type": "event"
   },
   {
@@ -94,6 +144,19 @@
   },
   {
     "inputs": [],
+    "name": "GRACE_PERIOD",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "LOCK",
     "outputs": [
       {
@@ -113,6 +176,32 @@
         "internalType": "bytes4",
         "name": "",
         "type": "bytes4"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAXIMUM_DELAY",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MINIMUM_DELAY",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -145,13 +234,32 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "asset",
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "approve",
     "outputs": [
       {
-        "internalType": "address",
+        "internalType": "uint32",
+        "name": "eta",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "delay",
+    "outputs": [
+      {
+        "internalType": "uint32",
         "name": "",
-        "type": "address"
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -160,22 +268,29 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      },
-      {
-        "internalType": "uint128",
-        "name": "amount",
-        "type": "uint128"
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct ITimelock.Call[]",
+        "name": "functionCalls",
+        "type": "tuple[]"
       }
     ],
-    "name": "exit",
+    "name": "execute",
     "outputs": [
       {
-        "internalType": "uint128",
-        "name": "",
-        "type": "uint128"
+        "internalType": "bytes[]",
+        "name": "results",
+        "type": "bytes[]"
       }
     ],
     "stateMutability": "nonpayable",
@@ -184,69 +299,34 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct ITimelock.Call[]",
+        "name": "functionCalls",
+        "type": "tuple[]"
       },
       {
         "internalType": "uint256",
-        "name": "amount",
+        "name": "salt",
         "type": "uint256"
       }
     ],
-    "name": "flashFee",
+    "name": "executeRepeated",
     "outputs": [
       {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "flashFeeFactor",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "contract IERC3156FlashBorrower",
-        "name": "receiver",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bytes",
-        "name": "data",
-        "type": "bytes"
-      }
-    ],
-    "name": "flashLoan",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
+        "internalType": "bytes[]",
+        "name": "results",
+        "type": "bytes[]"
       }
     ],
     "stateMutability": "nonpayable",
@@ -334,25 +414,68 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      },
-      {
-        "internalType": "uint128",
-        "name": "amount",
-        "type": "uint128"
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct ITimelock.Call[]",
+        "name": "functionCalls",
+        "type": "tuple[]"
       }
     ],
-    "name": "join",
+    "name": "hash",
     "outputs": [
       {
-        "internalType": "uint128",
-        "name": "",
-        "type": "uint128"
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
       }
     ],
-    "stateMutability": "nonpayable",
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct ITimelock.Call[]",
+        "name": "functionCalls",
+        "type": "tuple[]"
+      },
+      {
+        "internalType": "uint256",
+        "name": "salt",
+        "type": "uint256"
+      }
+    ],
+    "name": "hashRepeated",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -371,20 +494,92 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
       }
     ],
-    "name": "maxFlashLoan",
+    "name": "proposals",
     "outputs": [
       {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
+        "internalType": "enum Timelock.STATE",
+        "name": "state",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint32",
+        "name": "eta",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct ITimelock.Call[]",
+        "name": "functionCalls",
+        "type": "tuple[]"
+      }
+    ],
+    "name": "propose",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct ITimelock.Call[]",
+        "name": "functionCalls",
+        "type": "tuple[]"
+      },
+      {
+        "internalType": "uint256",
+        "name": "salt",
+        "type": "uint256"
+      }
+    ],
+    "name": "proposeRepeated",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "txHash",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -401,24 +596,6 @@
       }
     ],
     "name": "renounceRole",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "contract IERC20",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      }
-    ],
-    "name": "retrieve",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -462,12 +639,12 @@
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "flashFeeFactor_",
-        "type": "uint256"
+        "internalType": "uint32",
+        "name": "delay_",
+        "type": "uint32"
       }
     ],
-    "name": "setFlashFeeFactor",
+    "name": "setDelay",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -488,19 +665,6 @@
     "name": "setRoleAdmin",
     "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "storedBalance",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   }
 ]

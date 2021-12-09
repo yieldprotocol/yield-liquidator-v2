@@ -1,23 +1,26 @@
 [
   {
+    "inputs": [],
+    "name": "borrowIndex",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "fee0",
+        "name": "rate",
         "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "fee1",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bytes",
-        "name": "data",
-        "type": "bytes"
       }
     ],
-    "name": "uniswapV3FlashCallback",
+    "name": "set",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

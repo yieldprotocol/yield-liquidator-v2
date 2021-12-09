@@ -20,6 +20,7 @@ deployments/
 
 # Secret files
 .etherscanKey
+.alchemyKey
 .infuraKey
 .mythxKey
 .secret
