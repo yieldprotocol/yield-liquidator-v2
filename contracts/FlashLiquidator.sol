@@ -31,7 +31,7 @@ contract FlashLiquidator {
         address collateral;
         uint256 baseLoan;
         address baseJoin;
-        UniPoolAddress.PoolKey poolKey;
+        PoolAddress.PoolKey poolKey;
         address recipient;
     }
 
@@ -86,12 +86,12 @@ contract FlashLiquidator {
     // @dev from 'uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol'
     // @param poolKey The identifying key of the V3 pool
     // @return pool The V3 pool contract address
-    function _verifyCallback(UniPoolAddress.PoolKey memory poolKey)
+    function _verifyCallback(PoolAddress.PoolKey memory poolKey)
         internal
         view
-        returns (IUniswapV3Flash pool)
+        returns (IUniswapV3Pool pool)
     {
-        pool = IUniswapV3Flash(UniPoolAddress.computeAddress(factory, poolKey));
+        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
         require(msg.sender == address(pool), "Invalid caller");
     }
 
@@ -168,12 +168,12 @@ contract FlashLiquidator {
 
         // tokens in PoolKey must be ordered
         bool ordered = (baseToken < otherToken);
-        UniPoolAddress.PoolKey memory poolKey = UniPoolAddress.PoolKey({
+        PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({
             token0: ordered ? baseToken : otherToken,
             token1: ordered ? otherToken : baseToken,
             fee: 500 // 0.3%
         });
-        IUniswapV3Flash pool = IUniswapV3Flash(UniPoolAddress.computeAddress(factory, poolKey));
+        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 
         // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({

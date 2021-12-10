@@ -11,7 +11,7 @@ import "@yield-protocol/vault-v2/contracts/oracles/yearn/IYvToken.sol";
 //         and should not be used with something like yvcrvstEth which would require additional
 //         logic to unwrap
 contract YvBasicFlashLiquidator is FlashLiquidator {
-    using UniTransferHelper for address;
+    using UniswapTransferHelper for address;
 
     constructor(
         IWitch witch_,
