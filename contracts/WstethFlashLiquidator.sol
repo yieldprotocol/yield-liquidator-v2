@@ -31,12 +31,10 @@ contract WstethFlashLiquidator is FlashLiquidator {
     address public constant CURVE_SWAP = 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022;
 
     constructor(
-        address recipient_,
         IWitch witch_,
         address factory_,
         ISwapRouter swapRouter_
     ) FlashLiquidator(
-        recipient_,
         witch_,
         factory_,
         swapRouter_
@@ -118,7 +116,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
             unchecked {
                 profit = debtRecovered - debtToReturn;
             }
-            decoded.base.safeTransfer(recipient, profit);
+            decoded.base.safeTransfer(decoded.recipient, profit);
         }
         // repay flash loan
         decoded.base.safeTransfer(msg.sender, debtToReturn);
