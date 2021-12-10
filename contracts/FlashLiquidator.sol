@@ -4,7 +4,7 @@ pragma solidity >=0.8.6;
 
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/IWitch.sol";
-import "./IUniswapV3Pool.sol";
+import "./IUniswapV3Flash.sol";
 import "./ISwapRouter.sol";
 import "./UniPoolAddress.sol";
 import "./UniTransferHelper.sol";
@@ -89,9 +89,9 @@ contract FlashLiquidator {
     function _verifyCallback(UniPoolAddress.PoolKey memory poolKey)
         internal
         view
-        returns (IUniswapV3Pool pool)
+        returns (IUniswapV3Flash pool)
     {
-        pool = IUniswapV3Pool(UniPoolAddress.computeAddress(factory, poolKey));
+        pool = IUniswapV3Flash(UniPoolAddress.computeAddress(factory, poolKey));
         require(msg.sender == address(pool), "Invalid caller");
     }
 
@@ -173,7 +173,7 @@ contract FlashLiquidator {
             token1: ordered ? otherToken : baseToken,
             fee: 500 // 0.3%
         });
-        IUniswapV3Pool pool = IUniswapV3Pool(UniPoolAddress.computeAddress(factory, poolKey));
+        IUniswapV3Flash pool = IUniswapV3Flash(UniPoolAddress.computeAddress(factory, poolKey));
 
         // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({
