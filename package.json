@@ -2,9 +2,12 @@
   "engines": {
     "node": ">=12"
   },
-  "name": "@yield-protocol/flash-liquidator",
-  "version": "0.0.1",
+  "name": "@yield-protocol/yield-liquidator-v2",
+  "version": "0.0.3",
   "description": "Yield Flash Liquidator",
+  "files": [
+    "contracts/*.sol"
+  ],
   "main": "index.js",
   "author": "Yield Inc.",
   "scripts": {
@@ -51,14 +54,14 @@
     "yargs": "^17.0.1"
   },
   "repository": {
-    "url": "git+https://github.com/yieldprotocol/environments-v2.git",
+    "url": "git+https://github.com/yieldprotocol/yield-liquidator-v2.git",
     "type": "git"
   },
   "bugs": {
-    "url": "https://github.com/yieldprotocol/environments-v2/issues"
+    "url": "https://github.com/yieldprotocol/yield-liquidator-v2/issues"
   },
   "license": "GPL-3.0-or-later",
-  "homepage": "https://github.com/yieldprotocol/environments-v2#readme",
+  "homepage": "https://github.com/yieldprotocol/yield-liquidator-v2#readme",
   "dependencies": {
     "@types/chai": "^4.2.22",
     "latest": "^0.2.0"
