@@ -3,7 +3,7 @@
     "node": ">=12"
   },
   "name": "@yield-protocol/yield-liquidator-v2",
-  "version": "0.0.6",
+  "version": "0.0.6.rc0",
   "description": "Yield Flash Liquidator",
   "files": [
     "contracts/*.sol"
