@@ -8,8 +8,8 @@ import "./IWstEth.sol";
 
 // @notice This is the Yield Flash liquidator contract for Lido Wrapped Staked Ether (WSTETH)
 contract WstethFlashLiquidator is FlashLiquidator {
-    using TransferHelper for address;
-    using TransferHelper for IWstEth;
+    using UniTransferHelper for address;
+    using UniTransferHelper for IWstEth;
 
     // @notice "i" and "j" are the first two parameters (token to sell and token to receive respectively)
     //         in the CurveStableSwap.exchange function.  They represent that contract's internally stored
