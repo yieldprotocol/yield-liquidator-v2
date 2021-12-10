@@ -6,7 +6,7 @@ import '@yield-protocol/utils-v2/contracts/interfaces/IWETH9.sol';
 
 // File @uniswap/v3-periphery/contracts/libraries/TransferHelper.sol@v1.1.1
 //
-library UniTransferHelper {
+library UniswapTransferHelper {
     // @notice Transfers tokens from msg.sender to a recipient
     // @dev Errors with ST if transfer fails
     // @param token The contract address of the token which will be transferred
