@@ -18,7 +18,6 @@ import { promisify } from "util";
 import { exec as exec_async } from "child_process";
 import { HardhatNetworkAccountConfig } from "hardhat/types/config";
 import { TransactionResponse } from "@ethersproject/abstract-provider";
-import { BigNumber } from "ethers";
 
 const exec = promisify(exec_async);
 
@@ -163,7 +162,7 @@ describe("flash liquidator", function () {
         const liquidator_logs = await run_liquidator(tmp_root, liquidator);
 
         // step 1: liquidate a bunch of vaults, memorize the successful transactions
-        const buy_txs = new Array<TransactionResponse>()
+        const buy_txs = new Array<any>() // should be Array<TransactionResponse> but npm is stupid
         for (const log_record of liquidator_logs) {
             if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
                 const tx_hash_txt = log_record["fields"]["tx_hash"];
@@ -188,9 +187,9 @@ describe("flash liquidator", function () {
             await _owner.sendTransaction({
                 chainId: tx.chainId,
                 data: tx.data,
-                gasLimit: tx.gasLimit,
+                gasLimit: tx.gasLimit.toHexString(),
                 to: tx.to,
-                value: tx.value
+                value: tx.value.toHexString()
             })
         }
 

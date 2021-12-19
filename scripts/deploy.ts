@@ -26,7 +26,7 @@ import { FlashLiquidator } from '../typechain'
 
   const args = [witch, factory, swapRouter]
   const flashLiquidatorFactory = await ethers.getContractFactory('FlashLiquidator', ownerAcc)
-  const flashLiquidator = (await flashLiquidatorFactory.deploy(...args)) as FlashLiquidator
+  const flashLiquidator = (await flashLiquidatorFactory.deploy(witch, factory, swapRouter)) as FlashLiquidator
   console.log(`FlashLiquidator deployed at ${flashLiquidator.address}`)
   console.log(`npx hardhat verify --network ${network.name} ${flashLiquidator.address} ${args.join(' ')}`)
 })()
