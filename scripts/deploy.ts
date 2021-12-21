@@ -1,14 +1,10 @@
 import { ethers, waffle, network } from 'hardhat'
 
-import YvBasicFlashLiquidatorArtifact from '../artifacts/contracts/YvBasicFlashLiquidator.sol/YvBasicFlashLiquidator.json'
-import { YvBasicFlashLiquidator } from '../typechain/YvBasicFlashLiquidator'
-
-const { deployContract } = waffle
+import { FlashLiquidator } from '../typechain'
 
 /**
  * @dev This script deploys the FlashLiquidator
  */
-
 ;(async () => {
   const recipient = '0x3b43618b2961D5fbDf269A72ACcb225Df70dCb48'
   const swapRouter = '0xE592427A0AEce92De3Edee1F18E0157C05861564'
@@ -29,7 +25,8 @@ const { deployContract } = waffle
   }
 
   const args = [witch, factory, swapRouter]
-  let flashLiquidator = (await deployContract(ownerAcc, YvBasicFlashLiquidatorArtifact, args)) as YvBasicFlashLiquidator
+  const flashLiquidatorFactory = await ethers.getContractFactory('FlashLiquidator', ownerAcc)
+  const flashLiquidator = (await flashLiquidatorFactory.deploy(witch, factory, swapRouter)) as FlashLiquidator
   console.log(`FlashLiquidator deployed at ${flashLiquidator.address}`)
   console.log(`npx hardhat verify --network ${network.name} ${flashLiquidator.address} ${args.join(' ')}`)
 })()

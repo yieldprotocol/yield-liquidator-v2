@@ -61,14 +61,9 @@ contract FlashLiquidator {
         if (balances.art == 0) {
             return 0;
         }
-        // The castings below can't overflow
-        int256 accruedDebt = int256(uint256(cauldron.debtToBase(vault.seriesId, balances.art)));
-        int256 level = cauldron.level(vaultId);
-        int256 ratio = int256(uint256((cauldron.spotOracles(series.baseId, vault.ilkId)).ratio)) * 1e12; // Convert from 6 to 18 decimals
-
-        level = (level * 1e18) / (accruedDebt * ratio);
-        require(level >= 0, "level is negative");
-        return uint256(level);
+        (uint256 inkValue,)  = cauldron.spotOracles(series.baseId, vault.ilkId).oracle.get(vault.ilkId, series.baseId, balances.ink); // ink * spot
+        uint128 accrued_debt = cauldron.debtToBase(vault.seriesId, balances.art);
+        return inkValue * 1e18 / accrued_debt;
     }
 
     // @notice This is used by the bot to determine if the auction price has reached the final, minimum price yet
