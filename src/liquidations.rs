@@ -322,7 +322,12 @@ impl<M: Middleware> Liquidator<M> {
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
         let _enter = span.enter();
 
-        let raw_call = self.flash_liquidator.liquidate(vault_id);
+        let raw_call = self.flash_liquidator.liquidate(vault_id)
+            // explicitly set 'from' field because we're about to call `estimate_gas`
+            // If there's no `from` set, the estimated transaction is sent from 0x0 and reverts (tokens can't be transferred there)
+            //
+            // Also, it's safe to unwrap() client().default_sender(): if it's not set, we're in trouble anyways
+            .from(self.flash_liquidator.client().default_sender().unwrap());
         let gas_estimation = raw_call.estimate_gas().await?;
         let gas = gas_estimation.mul(U256::from(self.gas_boost + 100)).div(100);
         let call = raw_call
@@ -335,6 +340,7 @@ impl<M: Middleware> Liquidator<M> {
             Ok(hash) => {
                 // record the tx
                 info!(tx_hash = ?hash,
+                    vault_id=?vault_id,
                     instance_name=self.instance_name.as_str(),
                     gas=?gas,
                     "Submitted buy order");
