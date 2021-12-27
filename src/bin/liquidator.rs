@@ -30,6 +30,9 @@ struct Opts {
     #[options(help = "polling interval (ms)", default = "1000")]
     interval: u64,
 
+    #[options(help = "Multicall batch size", default = "1000")]
+    multicall_batch_size: usize,
+
     #[options(help = "the file to be used for persistence", default = "data.json")]
     file: PathBuf,
 
@@ -64,8 +67,8 @@ struct Config {
     witch: Address,
     #[serde(rename = "Flash")]
     flashloan: Address,
-    #[serde(rename = "Multicall")]
-    multicall: Option<Address>,
+    #[serde(rename = "Multicall2")]
+    multicall2: Address,
 }
 
 fn init_logger(use_json: bool) {
@@ -132,7 +135,7 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
 
     let cfg: Config = serde_json::from_reader(std::fs::File::open(opts.config)?)?;
     info!("Witch: {:?}", cfg.witch);
-    info!("Multicall: {:?}", cfg.multicall);
+    info!("Multicall2: {:?}", cfg.multicall2);
     info!("FlashLiquidator {:?}", cfg.flashloan);
     info!("Persistent data will be stored at: {:?}", opts.file);
 
@@ -153,7 +156,8 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         client,
         cfg.witch,
         cfg.flashloan,
-        cfg.multicall,
+        cfg.multicall2,
+        opts.multicall_batch_size,
         opts.min_ratio,
         opts.gas_boost,
         gas_escalator,

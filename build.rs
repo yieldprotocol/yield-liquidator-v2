@@ -7,6 +7,7 @@ fn main() {
     bindgen("Cauldron");
     bindgen("Witch");
     bindgen("FlashLiquidator");
+    bindgen("IMulticall2");
 }
 
 #[allow(dead_code)]
