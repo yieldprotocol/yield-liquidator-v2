@@ -58,7 +58,7 @@ async function run_liquidator(tmp_root: string, liquidator: FlashLiquidator) {
     await fs.writeFile(config_path, JSON.stringify({
         "Witch": g_witch,
         "Flash": liquidator.address,
-        "Multicall": "0xeefba1e63905ef1d7acba5a8513c70307c1ce441"
+        "Multicall2": "0x5ba1e12693dc8f9c48aad8770482f4739beed696"
     }, undefined, 2))
 
     logger.info("Liquidator deployed: ", liquidator.address)
