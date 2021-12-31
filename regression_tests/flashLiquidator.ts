@@ -126,7 +126,7 @@ describe("flash liquidator", function () {
     })
 
     it("liquidates ENS vaults on Dec-04-2021 (block: 13738315)", async function () {
-        this.timeout(900e3);
+        this.timeout(1800e3);
 
         await fork(13738315);
         const [_owner, liquidator] = await deploy_flash_liquidator();
@@ -154,7 +154,7 @@ describe("flash liquidator", function () {
     });
 
     it("has enough gas offset on Dec-04-2021 (txs issued: 13738305; txs executed: 13738315)", async function () {
-        this.timeout(900e3);
+        this.timeout(1800e3);
 
         await fork(13738305)
         const [_owner, liquidator] = await deploy_flash_liquidator();
@@ -196,5 +196,30 @@ describe("flash liquidator", function () {
         // await new Promise((r, _) => {
         //     setTimeout(r, 900e3)
         // })
+    });
+
+    it("does not liquidate base==collateral vaults Dec-30-2021 (block: 13911677)", async function () {
+        this.timeout(1800e3);
+
+        await fork(13911677)
+        const [_owner, liquidator] = await deploy_flash_liquidator();
+
+        const liquidator_logs = await run_liquidator(tmp_root, liquidator);
+
+        const vault_not_to_be_auctioned = "00cbb039b7b8103611a9717f";
+
+        let new_vaults_message;
+
+        for (const log_record of liquidator_logs) {
+            if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted liquidation") {
+                const vault_id = log_record["fields"]["vault_id"];
+                expect(vault_id).to.not.equal(`"${vault_not_to_be_auctioned}"`);
+            }
+            if (log_record["fields"]["message"] && log_record["fields"]["message"].startsWith("New vaults: ")) {
+                new_vaults_message = log_record["fields"]["message"];
+            }
+        }
+        // to make sure the bot did something and did not just crash
+        expect(new_vaults_message).to.be.equal("New vaults: 1086");
     });
 });
