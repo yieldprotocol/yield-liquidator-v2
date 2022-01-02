@@ -3,8 +3,8 @@
 //! This module is responsible for keeping track of the users that have open
 //! positions and observing their debt healthiness.
 use crate::{
-    bindings::ArtIdType, bindings::Cauldron, bindings::IMulticall2, bindings::IMulticall2Call,
-    bindings::InkIdType, bindings::VaultIdType, bindings::Witch, Result,
+    bindings::Cauldron, bindings::IMulticall2, bindings::IMulticall2Call, bindings::IlkIdType,
+    bindings::SeriesIdType, bindings::VaultIdType, bindings::Witch, Result,
 };
 
 use ethers::prelude::*;
@@ -36,6 +36,8 @@ pub struct Borrowers<M> {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 /// A vault's details
 pub struct Vault {
+    pub vault_id: VaultIdType,
+
     pub is_initialized: bool,
 
     pub is_collateralized: bool,
@@ -44,9 +46,9 @@ pub struct Vault {
 
     pub level: I256,
 
-    pub ink: InkIdType,
+    pub ilk_id: IlkIdType,
 
-    pub art: ArtIdType,
+    pub series_id: SeriesIdType,
 }
 
 impl<M: Middleware> Borrowers<M> {
@@ -112,7 +114,7 @@ impl<M: Middleware> Borrowers<M> {
             .for_each(|(vault_info, vault_id)| match vault_info {
                 Ok(details) => {
                     if self.vaults.insert(vault_id, details.clone()).is_none() {
-                        debug!(new_vault = ?vault_id, details=?details);
+                        debug!(new_vault = ?hex::encode(vault_id), details=?details);
                     }
                 }
                 Err(x) => {
@@ -120,12 +122,13 @@ impl<M: Middleware> Borrowers<M> {
                     self.vaults.insert(
                         vault_id,
                         Vault {
+                            vault_id: vault_id,
                             is_initialized: false,
                             is_collateralized: false,
                             level: I256::zero(),
                             under_auction: false,
-                            art: [0, 0, 0, 0, 0, 0],
-                            ink: [0, 0, 0, 0, 0, 0],
+                            series_id: [0, 0, 0, 0, 0, 0],
+                            ilk_id: [0, 0, 0, 0, 0, 0],
                         },
                     );
                 }
@@ -142,9 +145,9 @@ impl<M: Middleware> Borrowers<M> {
     /// First 4 multicalls will have multicall_batch_size * 3 == 40 internal calls
     /// Last multicall will have 2 * 3 = 6 internal calls
     ///
-    #[instrument(skip(self), fields(self.instance_name))]
+    #[instrument(skip(self, vault_ids), fields(self.instance_name))]
     pub async fn get_vault_info(&mut self, vault_ids: &[VaultIdType]) -> Vec<Result<Vault, M>> {
-        let ret: Vec<_> = stream::iter(vault_ids)
+        let mut ret: Vec<_> = stream::iter(vault_ids)
             // split to chunks
             .chunks(self.multicall_batch_size)
             // technicality: 'materialize' slices, so that the next step can be async
@@ -170,6 +173,33 @@ impl<M: Middleware> Borrowers<M> {
             .flat_map(|x| stream::iter(x))
             .collect()
             .await;
+
+        // hack: for vaults that appear undercollaterized do another round of checks
+        // if base == ilk, vaults are not liquidatable => we mark them as overcollaterized
+        //
+        for single_vault_maybe in &mut ret {
+            if let Ok(single_vault) = single_vault_maybe {
+                if !single_vault.is_collateralized {
+                    info!(vault_id=?hex::encode(single_vault.vault_id), "Potentially undercollaterized vault - checking if it's trivial");
+                    match self
+                        .is_trivial_vault(&single_vault.series_id, &single_vault.ilk_id)
+                        .await
+                    {
+                        Ok(true) => {
+                            info!(vault_id=?hex::encode(single_vault.vault_id), "Is trivial - marking as NOT undercollaterized");
+                            single_vault.is_collateralized = true;
+                        }
+                        Ok(false) => {
+                            info!(vault_id=?hex::encode(single_vault.vault_id), "Is not trivial");
+                        }
+                        Err(x) => {
+                            warn!(vault_id=?hex::encode(single_vault.vault_id), "Failed to check for triviality");
+                            *single_vault_maybe = Err(x);
+                        }
+                    }
+                }
+            }
+        }
 
         assert!(vault_ids.len() == ret.len());
         return ret;
@@ -253,7 +283,7 @@ impl<M: Middleware> Borrowers<M> {
                 .decode_output(&level_data)
                 .unwrap(),
         )?;
-        let vault_data = <(Address, ArtIdType, InkIdType) as Detokenize>::from_tokens(
+        let vault_data = <(Address, SeriesIdType, IlkIdType) as Detokenize>::from_tokens(
             self.cauldron
                 .vaults(*vault_id)
                 .function
@@ -271,12 +301,23 @@ impl<M: Middleware> Borrowers<M> {
         let is_collateralized: bool = !level_int.is_negative();
         trace!(vault_id=?hex::encode(vault_id), "Got vault info");
         return Ok(Vault {
+            vault_id: *vault_id,
             is_initialized: true,
             is_collateralized: is_collateralized,
             level: level_int,
             under_auction: auction_id.0 != Address::zero(),
-            art: vault_data.1,
-            ink: vault_data.2,
+            series_id: vault_data.1,
+            ilk_id: vault_data.2,
         });
+    }
+
+    async fn is_trivial_vault(
+        &self,
+        series_id: &SeriesIdType,
+        ilk_id: &IlkIdType,
+    ) -> Result<bool, M> {
+        let (_, base_id, _) = self.cauldron.series(*series_id).call().await?;
+
+        return Ok(base_id == *ilk_id);
     }
 }
