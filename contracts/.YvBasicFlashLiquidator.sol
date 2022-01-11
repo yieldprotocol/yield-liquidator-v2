@@ -4,14 +4,14 @@ pragma solidity >=0.8.6;
 
 
 import "./FlashLiquidator.sol";
-import "./IYvToken.sol";
+import "@yield-protocol/vault-v2/contracts/oracles/yearn/IYvToken.sol";
 
 // @notice This is the Yield Flash liquidator contract for basic Yearn Vault tokens
 // @dev    This should only be used with basic Yearn Vault Tokens such as yvDAI and yvUSDC
 //         and should not be used with something like yvcrvstEth which would require additional
 //         logic to unwrap
 contract YvBasicFlashLiquidator is FlashLiquidator {
-    using TransferHelper for address;
+    using UniswapTransferHelper for address;
 
     constructor(
         IWitch witch_,
