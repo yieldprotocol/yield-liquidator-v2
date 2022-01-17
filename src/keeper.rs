@@ -53,6 +53,7 @@ impl<M: Middleware> Keeper<M> {
         gas_boost: u16,
         gas_escalator: GeometricGasPrice,
         bump_gas_delay: u64,
+        target_collateral_offer: u16,
         state: Option<State>,
         instance_name: String,
     ) -> Result<Keeper<M>, M> {
@@ -79,6 +80,7 @@ impl<M: Middleware> Keeper<M> {
             Some(multicall2),
             min_ratio,
             gas_boost,
+            target_collateral_offer,
             client.clone(),
             auctions,
             gas_escalator,

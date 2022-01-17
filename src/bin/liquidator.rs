@@ -45,6 +45,9 @@ struct Opts {
     #[options(help = "Don't bump gas until the transaction is this many seconds old", default = "90")]
     bump_gas_delay: u64,
 
+    #[options(help = "Buy an auction as soon as this much collateral percentage is offered", default = "90")]
+    target_collateral_offer: u16,
+
     #[options(help = "the block to start watching from")]
     start_block: Option<u64>,
 
@@ -162,6 +165,7 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         opts.gas_boost,
         gas_escalator,
         opts.bump_gas_delay,
+        opts.target_collateral_offer,
         state,
         format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan)
     ).await?;
