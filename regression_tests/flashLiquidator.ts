@@ -223,31 +223,6 @@ describe("flash liquidator", function () {
         expect(new_vaults_message).to.be.equal("New vaults: 1086");
     });
 
-    it("does not liquidate before 90% collateral is released", async function () {
-        this.timeout(1800e3);
-
-        await fork(13911677)
-        const [_owner, liquidator] = await deploy_flash_liquidator();
-
-        const liquidator_logs = await run_liquidator(tmp_root, liquidator);
-
-        const vault_not_to_be_auctioned = "00cbb039b7b8103611a9717f";
-
-        let new_vaults_message;
-
-        for (const log_record of liquidator_logs) {
-            if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted liquidation") {
-                const vault_id = log_record["fields"]["vault_id"];
-                expect(vault_id).to.not.equal(`"${vault_not_to_be_auctioned}"`);
-            }
-            if (log_record["fields"]["message"] && log_record["fields"]["message"].startsWith("New vaults: ")) {
-                new_vaults_message = log_record["fields"]["message"];
-            }
-        }
-        // to make sure the bot did something and did not just crash
-        expect(new_vaults_message).to.be.equal("New vaults: 1086");
-    });
-
     describe("90% collateral offer", function () {
         const test_vault_id = "3ddcb12f945cd58f4acf26c7";
         const auction_started_in_block = 13900229; // 1640781211 ~= 04:33:31
