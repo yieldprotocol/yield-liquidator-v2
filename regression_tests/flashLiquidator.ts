@@ -222,4 +222,60 @@ describe("flash liquidator", function () {
         // to make sure the bot did something and did not just crash
         expect(new_vaults_message).to.be.equal("New vaults: 1086");
     });
+
+    describe("90% collateral offer", function () {
+        const test_vault_id = "3ddcb12f945cd58f4acf26c7";
+        const auction_started_in_block = 13900229; // 1640781211 ~= 04:33:31
+        const liquidated_in_block = 13900498; // 1640784847 ~= 05:34:07
+
+        const auction_start = 1640781211;
+        const ilk_id = "0x303300000000";
+        const duration = 3600;
+        const initial_offer = 666000; // .000000000000666000 really?
+
+        it("triggers liquidation upon expiry", async function () {
+            this.timeout(1800e3);
+
+            // block timestamp: 1640784562 ~= 05:29:22; ~95% collateral is offered
+            await fork(13900485);
+            const [_owner, liquidator] = await deploy_flash_liquidator();
+
+            const liquidator_logs = await run_liquidator(tmp_root, liquidator);
+
+            let vault_is_liquidated = false;
+            for (const log_record of liquidator_logs) {
+                if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
+                    const vault_id = log_record["fields"]["vault_id"];
+                    if (vault_id == `"${test_vault_id}"`) {
+                        vault_is_liquidated = true;
+                    }
+                }
+            }
+            expect(vault_is_liquidated).to.equal(true);
+        })
+
+        it("does not trigger liquidation before expiry", async function () {
+            this.timeout(1800e3);
+
+            // block timestamp: 1640782880 ~= 05:01:20; ~50% collateral is offered
+            await fork(13900364);
+            const [_owner, liquidator] = await deploy_flash_liquidator();
+
+            const liquidator_logs = await run_liquidator(tmp_root, liquidator);
+
+            let new_vaults_message;
+            for (const log_record of liquidator_logs) {
+                if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
+                    const vault_id = log_record["fields"]["vault_id"];
+                    expect(vault_id).to.not.equal(`"${test_vault_id}"`);
+                }
+                if (log_record["fields"]["message"] && log_record["fields"]["message"].startsWith("New vaults: ")) {
+                    new_vaults_message = log_record["fields"]["message"];
+                }
+
+            }
+            // to make sure the bot did something and did not just crash
+            expect(new_vaults_message).to.be.equal("New vaults: 1073");
+        })
+    });
 });

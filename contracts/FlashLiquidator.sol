@@ -66,17 +66,6 @@ contract FlashLiquidator {
         return inkValue * 1e18 / accrued_debt;
     }
 
-    // @notice This is used by the bot to determine if the auction price has reached the final, minimum price yet
-    // @param  vaultId id of vault to check
-    // @return True if it has reached minimal price
-    function isAtMinimalPrice(bytes12 vaultId) public returns (bool) {
-        bytes6 ilkId = (cauldron.vaults(vaultId)).ilkId;
-        (uint32 duration, ) = witch.ilks(ilkId);
-        (, uint32 auctionStart) = witch.auctions(vaultId);
-        uint256 elapsed = uint32(block.timestamp) - auctionStart;
-        return elapsed >= duration;
-    }
-
     // @notice Returns the address of a valid Uniswap V3 Pool
     // @dev from 'uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol'
     // @param poolKey The identifying key of the V3 pool

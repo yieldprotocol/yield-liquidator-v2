@@ -15,7 +15,7 @@ use ethers::{
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, ops::Mul, sync::Arc, time::Instant};
+use std::{collections::HashMap, fmt, ops::Mul, sync::Arc, time::{Instant, SystemTime}, convert::TryInto};
 use tracing::{debug, debug_span, error, info, trace, warn, instrument};
 
 pub type AuctionMap = HashMap<VaultIdType, bool>;
@@ -42,6 +42,9 @@ pub struct Liquidator<M> {
     // extra gas to use for txs, as percent of estimated gas cost
     gas_boost: u16,
 
+    // buy an auction when this percentage of collateral is released
+    target_collateral_offer: u16,
+
     pending_liquidations: HashMap<VaultIdType, PendingTransaction>,
     pending_auctions: HashMap<VaultIdType, PendingTransaction>,
     gas_escalator: GeometricGasPrice,
@@ -63,8 +66,7 @@ pub struct Auction {
     debt: u128,
 
     ratio_pct: u16,
-    is_at_minimal_price: bool,
-
+    collateral_offer_is_good_enough: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,6 +94,7 @@ impl<M: Middleware> Liquidator<M> {
         multicall: Option<Address>,
         min_ratio: u16,
         gas_boost: u16,
+        target_collateral_offer: u16,
         client: Arc<M>,
         auctions: AuctionMap,
         gas_escalator: GeometricGasPrice,
@@ -109,6 +112,7 @@ impl<M: Middleware> Liquidator<M> {
             multicall,
             min_ratio,
             gas_boost,
+            target_collateral_offer,
             auctions,
 
             pending_liquidations: HashMap::new(),
@@ -304,11 +308,11 @@ impl<M: Middleware> Liquidator<M> {
                 "Ratio threshold is reached, buying");
             buy = true;
         }
-        if auction.is_at_minimal_price {
+        if auction.collateral_offer_is_good_enough {
             info!(vault_id=?hex::encode(vault_id), auction=?auction,
                 ratio=auction.ratio_pct, ratio_threshold=self.min_ratio,
                 instance_name=self.instance_name.as_str(),
-                "Is at minimal price, buying");
+                "Collateral offer is good enough, buying");
             buy = true;
         }
         if !buy {
@@ -340,7 +344,7 @@ impl<M: Middleware> Liquidator<M> {
             Ok(hash) => {
                 // record the tx
                 info!(tx_hash = ?hash,
-                    vault_id=?vault_id,
+                    vault_id = ?hex::encode(vault_id),
                     instance_name=self.instance_name.as_str(),
                     gas=?gas,
                     "Submitted buy order");
@@ -418,7 +422,28 @@ impl<M: Middleware> Liquidator<M> {
         Ok(())
     }
 
+    fn current_offer(&self, now: u64, auction_start: u64, duration: u64, initial_offer: u64) -> Result<u16, M> {
+        if now < auction_start.into() {
+            return Err(ContractError::ConstructorError{});
+        }
+        let one = 10u64.pow(18);
+        if initial_offer > one {
+            error!(initial_offer, "initialOffer > 1");
+            return Err(ContractError::ConstructorError{});
+        }
+        let initial_offer_pct = initial_offer / 10u64.pow(16); // 0-100
+
+        let time_since_auction_start: u64 = now - auction_start;
+        if time_since_auction_start >= duration {
+            Ok(100)
+        } else {
+            // time_since_auction_start / duration * (1 - initial_offer) + initial_offer
+            Ok((time_since_auction_start * (100 - initial_offer_pct) / duration + initial_offer_pct).try_into().unwrap())
+        }
+    }
+
     async fn get_auction(&mut self, vault_id: VaultIdType) -> Result<Auction, M> {
+        let (_, _, ilk_id) = self.cauldron.vaults(vault_id).call().await?;
         let balances_fn = self.cauldron.balances(vault_id);
         let auction_fn = self.liquidator.auctions(vault_id);
 
@@ -432,18 +457,30 @@ impl<M: Middleware> Liquidator<M> {
             .clear_calls()
             .add_call(balances_fn)
             .add_call(auction_fn)
-            .add_call(self.flash_liquidator.is_at_minimal_price(vault_id))
+            .add_call(self.liquidator.ilks(ilk_id))
             .add_call(self.flash_liquidator.collateral_to_debt_ratio(vault_id))
             ;
 
-        let ((art, _), (auction_owner, auction_start), is_at_minimal_price, ratio_u256):
-            ((u128, u128), (Address, u32), bool, U256) = multicall.call().await?;
+        let ((art, _), (auction_owner, auction_start), (duration, initial_offer), ratio_u256):
+            ((u128, u128), (Address, u32), (u32, u64), U256) = multicall.call().await?;
+
+        let current_offer: u16 = 
+            match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                    Ok(x) => self.current_offer(x.as_secs(), 
+                    u64::from(auction_start), 
+                    u64::from(duration), initial_offer)
+                        .unwrap_or(0),
+                    Err(x) => {
+                        error!("Failed to get system time: {}", x);
+                        0u16
+                    }
+                };
 
         trace!(
             vault_id=?hex::encode(vault_id),
             debt=?art,
             ratio=?ratio_u256,
-            is_at_minimal_price=is_at_minimal_price,
+            current_offer=current_offer,
             "Fetched auction details"
         );
 
@@ -462,7 +499,7 @@ impl<M: Middleware> Liquidator<M> {
             started: auction_start,
             debt: art,
             ratio_pct: ratio_pct,
-            is_at_minimal_price: is_at_minimal_price,
+            collateral_offer_is_good_enough: current_offer >= self.target_collateral_offer,
         })
 
     }
