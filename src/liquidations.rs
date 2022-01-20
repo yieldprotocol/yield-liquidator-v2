@@ -3,7 +3,7 @@
 //! This module is responsible for triggering and participating in a Auction's
 //! dutch auction
 use crate::{
-    bindings::{Cauldron, Witch, VaultIdType, FlashLiquidator},
+    bindings::{Cauldron, Witch, VaultIdType, FlashLiquidator, BaseIdType},
     borrowers::{Vault},
     escalator::GeometricGasPrice,
     merge, Result,
@@ -282,7 +282,11 @@ impl<M: Middleware> Liquidator<M> {
 
         // Get the vault's info
         let auction = match self.get_auction(vault_id).await {
-            Ok(x) => x,
+            Ok(Some(x)) => x,
+            Ok(None) => {
+                // auction is not valid
+                return Ok(false);
+            }
             Err(x) => {
                 warn!(vault_id=?hex::encode(vault_id), err=?x, "Failed to get auction");
                 return Ok(true);
@@ -442,8 +446,8 @@ impl<M: Middleware> Liquidator<M> {
         }
     }
 
-    async fn get_auction(&mut self, vault_id: VaultIdType) -> Result<Auction, M> {
-        let (_, _, ilk_id) = self.cauldron.vaults(vault_id).call().await?;
+    async fn get_auction(&mut self, vault_id: VaultIdType) -> Result<Option<Auction>, M> {
+        let (_, series_id, ilk_id) = self.cauldron.vaults(vault_id).call().await?;
         let balances_fn = self.cauldron.balances(vault_id);
         let auction_fn = self.liquidator.auctions(vault_id);
 
@@ -458,12 +462,17 @@ impl<M: Middleware> Liquidator<M> {
             .add_call(balances_fn)
             .add_call(auction_fn)
             .add_call(self.liquidator.ilks(ilk_id))
+            .add_call(self.cauldron.series(series_id))
             .add_call(self.flash_liquidator.collateral_to_debt_ratio(vault_id))
             ;
 
-        let ((art, _), (auction_owner, auction_start), (duration, initial_offer), ratio_u256):
-            ((u128, u128), (Address, u32), (u32, u64), U256) = multicall.call().await?;
+        let ((art, _), (auction_owner, auction_start), (duration, initial_offer), (_, base_id, _), ratio_u256):
+            ((u128, u128), (Address, u32), (u32, u64), (Address, BaseIdType, u32), U256) = multicall.call().await?;
 
+        if base_id == ilk_id {
+            info!(vault_id=?hex::encode(vault_id), "vault is trivial - not auctioning");
+            return Ok(None);
+        }
         let current_offer: u16 = 
             match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
                     Ok(x) => self.current_offer(x.as_secs(), 
@@ -494,13 +503,13 @@ impl<M: Middleware> Liquidator<M> {
             }
         };
 
-        Ok(Auction {
+        Ok(Some(Auction {
             under_auction: (auction_owner != Address::zero()),
             started: auction_start,
             debt: art,
             ratio_pct: ratio_pct,
             collateral_offer_is_good_enough: current_offer >= self.target_collateral_offer,
-        })
+        }))
 
     }
 }
