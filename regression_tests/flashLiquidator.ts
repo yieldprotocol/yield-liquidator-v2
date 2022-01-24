@@ -53,12 +53,15 @@ async function deploy_flash_liquidator(): Promise<[SignerWithAddress, FlashLiqui
     return [owner, liquidator];
 }
 
-async function run_liquidator(tmp_root: string, liquidator: FlashLiquidator) {
+async function run_liquidator(tmp_root: string, liquidator: FlashLiquidator,
+    base_to_debt_threshold: { [name: string]: string } = {}) {
+
     const config_path = join(tmp_root, "config.json")
     await fs.writeFile(config_path, JSON.stringify({
         "Witch": g_witch,
         "Flash": liquidator.address,
-        "Multicall2": "0x5ba1e12693dc8f9c48aad8770482f4739beed696"
+        "Multicall2": "0x5ba1e12693dc8f9c48aad8770482f4739beed696",
+        "BaseToDebtThreshold": base_to_debt_threshold
     }, undefined, 2))
 
     logger.info("Liquidator deployed: ", liquidator.address)
@@ -78,7 +81,8 @@ async function run_liquidator(tmp_root: string, liquidator: FlashLiquidator) {
                 "RUST_BACKTRACE": "1",
                 "RUST_LOG": "liquidator,yield_liquidator=debug",
                 ...process.env
-            }
+            },
+            maxBuffer: 1024 * 1024 * 10
         })
         stdout = results.stdout
         stderr = results.stderr
@@ -222,6 +226,61 @@ describe("flash liquidator", function () {
         // to make sure the bot did something and did not just crash
         expect(new_vaults_message).to.be.equal("New vaults: 1086");
     });
+
+    it("does not liquidate <1000 USDC vaults Jan-24-2022 (block: 14070324)", async function () {
+        this.timeout(1800e3);
+
+        await fork(14070324)
+        const [_owner, liquidator] = await deploy_flash_liquidator();
+
+        const liquidator_logs = await run_liquidator(tmp_root, liquidator, {
+            "303200000000": "1000000000"
+        });
+
+        const vault_not_to_be_auctioned = "468ff2cb1b8bb57bf932ab3f";
+
+        let new_vaults_message;
+
+        for (const log_record of liquidator_logs) {
+            if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
+                const vault_id = log_record["fields"]["vault_id"];
+                expect(vault_id).to.not.equal(`"${vault_not_to_be_auctioned}"`);
+            }
+            if (log_record["fields"]["message"] && log_record["fields"]["message"].startsWith("New vaults: ")) {
+                new_vaults_message = log_record["fields"]["message"];
+            }
+        }
+        // to make sure the bot did something and did not just crash
+        expect(new_vaults_message).to.be.equal("New vaults: 1397");
+    });
+
+    it("does not liquidate <1000 DAI vaults Jan-24-2022 (block: 14070324)", async function () {
+        this.timeout(1800e3);
+
+        await fork(14070324)
+        const [_owner, liquidator] = await deploy_flash_liquidator();
+
+        const liquidator_logs = await run_liquidator(tmp_root, liquidator, {
+            "303100000000": "1000000000000000000000"
+        });
+
+        const vault_not_to_be_auctioned = "9f78a0b12bc8152573520d52";
+
+        let new_vaults_message;
+
+        for (const log_record of liquidator_logs) {
+            if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
+                const vault_id = log_record["fields"]["vault_id"];
+                expect(vault_id).to.not.equal(`"${vault_not_to_be_auctioned}"`);
+            }
+            if (log_record["fields"]["message"] && log_record["fields"]["message"].startsWith("New vaults: ")) {
+                new_vaults_message = log_record["fields"]["message"];
+            }
+        }
+        // to make sure the bot did something and did not just crash
+        expect(new_vaults_message).to.be.equal("New vaults: 1397");
+    });
+
 
     describe("90% collateral offer", function () {
         const test_vault_id = "3ddcb12f945cd58f4acf26c7";
