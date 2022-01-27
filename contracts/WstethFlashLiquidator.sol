@@ -32,43 +32,40 @@ contract WstethFlashLiquidator is FlashLiquidator {
 
     constructor(
         IWitch witch_,
-        address factory_,
-        ISwapRouter swapRouter_
+        ISwapRouter swapRouter_,
+        IFlashLoan flashLoaner_
     ) FlashLiquidator(
         witch_,
-        factory_,
-        swapRouter_
+        swapRouter_,
+        flashLoaner_
     ) {}
 
     // @dev Required to receive ETH from Curve
     receive() external payable {}
 
-    // @param fee0 The fee from calling flash for token0
-    // @param fee1 The fee from calling flash for token1
-    // @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
-    // @notice     implements the callback called from flash
+    // @notice flash loan callback, see IFlashLoanRecipient for details
+    // @param tokens tokens loaned
+    // @param amounts amounts of tokens loaned
+    // @param feeAmounts flash loan fees
     // @dev        Unlike the other Yield FlashLiquidator contracts, this contains extra steps to
     //             unwrap WSTETH and swap it for Eth on Curve before Uniswapping it for base
-    function uniswapV3FlashCallback(
-        uint256 fee0,
-        uint256 fee1,
-        bytes calldata data
-    ) external override {
-        // we only borrow 1 token
-        require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
-        uint256 fee;
-        unchecked {
-            // since one fee is always zero, this won't overflow
-            fee = fee0 + fee1;
-        }
+    function receiveFlashLoan(
+        address[] memory tokens,
+        uint256[] memory amounts,
+        uint256[] memory feeAmounts,
+        bytes memory userData) public override {
+
+        require(liquidating && msg.sender == address(flashLoaner), "baka");
+        require(tokens.length == 1 , "1 token expected");
 
         // decode, verify, and set debtToReturn
-        FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
-        _verifyCallback(decoded.poolKey);
-        uint256 debtToReturn = decoded.baseLoan + fee;
+        FlashCallbackData memory decoded = abi.decode(userData, (FlashCallbackData));
+
+        uint256 baseLoan = amounts[0];
+        uint256 debtToReturn = baseLoan + feeAmounts[0];
 
         // liquidate the vault
-        decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
+        decoded.base.safeApprove(decoded.baseJoin, baseLoan);
         uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);
 
         // Sell collateral:

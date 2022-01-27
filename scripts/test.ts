@@ -60,15 +60,9 @@ import { WstethFlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
   console.log(`Auctioning ${vaultId}`)
   await witch.auction(vaultId)
 
-  // Check if it is at minimal price (should be false)
-  console.log(`Is at minimal price: ${await flashLiquidator.callStatic.isAtMinimalPrice(vaultId)}`)
-
   // Wait to get enough collateral to pay the flash loan plus the fees
   const { timestamp } = await ethers.provider.getBlock('latest')
   await ethers.provider.send('evm_mine', [timestamp + 3600])
-
-  // Check if it is at minimal price (should be true)
-  console.log(`Is at minimal price: ${await flashLiquidator.callStatic.isAtMinimalPrice(vaultId)}`)
 
   console.log(`Liquidating ${vaultId}`)
   await flashLiquidator.liquidate(vaultId)
