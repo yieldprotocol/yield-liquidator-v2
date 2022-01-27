@@ -99,7 +99,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
                 ISwapRouter.ExactInputSingleParams({
                     tokenIn: WETH,
                     tokenOut: decoded.base,
-                    fee: 500,  // can't use the same fee as the flash loan
+                    fee: 3000,  // can't use the same fee as the flash loan
                                // because of reentrancy protection
                     recipient: address(this),
                     deadline: block.timestamp + 180,
