@@ -1,5 +1,5 @@
 use ethers::prelude::*;
-use yield_liquidator::{escalator::GeometricGasPrice, keeper::Keeper, bindings::BaseIdType};
+use yield_liquidator::{escalator::GeometricGasPrice, keeper::Keeper, bindings::BaseIdType, swap_router::SwapRouter};
 
 use gumdrop::Options;
 use serde::Deserialize;
@@ -57,11 +57,15 @@ struct Opts {
     #[options(default="false", help="Only run 1 iteration and exit")]
     one_shot: bool,
 
+    #[options(help = "Path to the swap router binary")]
+    swap_router_binary: String,
+
     #[options(
         help = "Instance name (used for logging)",
         default = "undefined"
     )]
     instance_name: String,
+
 }
 
 #[derive(Deserialize)]
@@ -72,6 +76,8 @@ struct Config {
     flashloan: Address,
     #[serde(rename = "Multicall2")]
     multicall2: Address,
+    #[serde(rename = "SwapRouter02")]
+    swap_router_02: Address,
     #[serde(rename = "BaseToDebtThreshold")]
     base_to_debt_threshold: HashMap<String, String>
 }
@@ -162,6 +168,18 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
             (hex::decode(k).unwrap().try_into().unwrap(), v.parse::<u128>().unwrap())
         })
         .collect();
+
+    let instance_name = format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan);
+    
+    let swap_router = SwapRouter::new(
+        opts.url, 
+        opts.chain_id,
+        cfg.swap_router_02,
+        cfg.flashloan,
+        opts.swap_router_binary,
+        instance_name.clone()
+    );
+
     let mut keeper = Keeper::new(
         client,
         cfg.witch,
@@ -175,7 +193,8 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         opts.target_collateral_offer,
         base_to_debt_threshold,
         state,
-        format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan)
+        swap_router,
+        instance_name
     ).await?;
 
     if opts.one_shot {

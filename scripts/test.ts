@@ -65,7 +65,7 @@ import { WstethFlashLiquidator, Cauldron, Witch, IERC20 } from '../typechain/'
   await ethers.provider.send('evm_mine', [timestamp + 3600])
 
   console.log(`Liquidating ${vaultId}`)
-  await flashLiquidator.liquidate(vaultId)
+  // await flashLiquidator.liquidate(vaultId)
 
   console.log(`Profit: ${await WETH.balanceOf(recipient)}`)
 })()

@@ -24,7 +24,7 @@ const exec = promisify(exec_async);
 const logger: Logger = new Logger();
 
 const g_witch = "0x53C3760670f6091E1eC76B4dd27f73ba4CAd5061"
-const g_uni_router = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
+const g_uni_router_02 = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45";
 const g_flash_loaner = '0xBA12222222228d8Ba445958a75a0704d566BF2C8'
 
 async function fork(block_number: number) {
@@ -49,7 +49,7 @@ async function deploy_flash_liquidator(): Promise<[SignerWithAddress, FlashLiqui
     const flFactory = await ethers.getContractFactory("FlashLiquidator") as FlashLiquidator__factory;
 
 
-    const liquidator = await flFactory.deploy(g_witch, g_uni_router, g_flash_loaner) as FlashLiquidator
+    const liquidator = await flFactory.deploy(g_witch, g_uni_router_02, g_flash_loaner) as FlashLiquidator
     return [owner, liquidator];
 }
 
@@ -61,7 +61,8 @@ async function run_liquidator(tmp_root: string, liquidator: FlashLiquidator,
         "Witch": g_witch,
         "Flash": liquidator.address,
         "Multicall2": "0x5ba1e12693dc8f9c48aad8770482f4739beed696",
-        "BaseToDebtThreshold": base_to_debt_threshold
+        "BaseToDebtThreshold": base_to_debt_threshold,
+        "SwapRouter02": g_uni_router_02
     }, undefined, 2))
 
     logger.info("Liquidator deployed: ", liquidator.address)
@@ -70,8 +71,14 @@ async function run_liquidator(tmp_root: string, liquidator: FlashLiquidator,
     );
 
     const private_key_path = join(tmp_root, "private_key")
-    await fs.writeFile(private_key_path, accounts[0].privateKey.substr(2))
-    const cmd = `cargo run -- -c ${config_path} -u http://127.0.0.1:8545/ -C ${network.config.chainId} -p ${private_key_path} --gas-boost 10 --one-shot --json-log --file /dev/null`
+    await fs.writeFile(private_key_path, accounts[0].privateKey.substring(2))
+    const cmd = `cargo run -- -c ${config_path} -u http://127.0.0.1:8545/ -C ${network.config.chainId} \
+        -p ${private_key_path} \
+        --gas-boost 10 \
+        --swap-router-binary build/bin/router \
+        --one-shot \
+        --json-log \
+        --file /dev/null`
 
     let stdout: string;
     let stderr: string
@@ -129,10 +136,10 @@ describe("flash liquidator", function () {
         tmp_root = await fs.mkdtemp(join(tmpdir(), "flash_liquidator_test"))
     })
 
-    it("liquidates ENS vaults on Dec-04-2021 (block: 13738315)", async function () {
+    it("liquidates ENS vaults on Dec-14-2021 (block: 13804681)", async function () {
         this.timeout(1800e3);
 
-        await fork(13738315);
+        await fork(13804681);
         const [_owner, liquidator] = await deploy_flash_liquidator();
 
         const starting_balance = await _owner.getBalance();
@@ -145,61 +152,12 @@ describe("flash liquidator", function () {
             if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
                 bought++;
             }
-            if (log_record["level"] == "ERROR") {
-                expect(log_record["fields"]["message"]).to.be.equal("Failed to buy");
-                expect(log_record["fields"]["error"]).to.contain("Too little received");
-            }
+            expect(log_record["level"]).to.not.equal("ERROR"); // no errors allowed
         }
-        // there are 7 vaults; 3 should be liquidated, the last 4 don't have enough collateral -> flash loan is not profitable
-        expect(bought).to.be.equal(3)
+        expect(bought).to.be.equal(5)
 
         const final_balance = await _owner.getBalance();
         logger.warn("ETH used: ", starting_balance.sub(final_balance).div(1e12).toString(), "uETH")
-    });
-
-    it("has enough gas offset on Dec-04-2021 (txs issued: 13738305; txs executed: 13738315)", async function () {
-        this.timeout(1800e3);
-
-        await fork(13738305)
-        const [_owner, liquidator] = await deploy_flash_liquidator();
-
-        const liquidator_logs = await run_liquidator(tmp_root, liquidator);
-
-        // step 1: liquidate a bunch of vaults, memorize the successful transactions
-        const buy_txs = new Array<any>() // should be Array<TransactionResponse> but npm is stupid
-        for (const log_record of liquidator_logs) {
-            if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
-                const tx_hash_txt = log_record["fields"]["tx_hash"];
-                const tx_hash = tx_hash_txt.match(/tx_hash:\s+(\w+)/)[1]
-                expect(tx_hash).to.not.be.undefined
-                const tx = await ethers.provider.getTransaction(tx_hash)
-                logger.info("TX hash found: ", tx.hash, `[${tx.nonce}]`)
-                buy_txs.push(tx)
-            }
-        }
-        // now, simulate transactions from step 1 not being minted immediately
-        // step 2: restart fork from a later block, redeploy liquidator (will have the same address)
-        logger.info("rewinding")
-        await fork(13738315)
-        await deploy_flash_liquidator();
-        logger.info("rewound, replaing txs: ", buy_txs.length)
-        // step 3: replay transactions from step 1 and check if they still succeed
-        // If we don't have gas buffer, some of the txs will fail because they now cost a bit more
-        for (const tx of buy_txs) {
-            logger.info("Sending: ", tx.hash, `[${tx.nonce}]`)
-            // this throws if the tx revers (runs out of gas)
-            await _owner.sendTransaction({
-                chainId: tx.chainId,
-                data: tx.data,
-                gasLimit: tx.gasLimit.toHexString(),
-                to: tx.to,
-                value: tx.value.toHexString()
-            })
-        }
-
-        // await new Promise((r, _) => {
-        //     setTimeout(r, 900e3)
-        // })
     });
 
     it("does not liquidate base==collateral vaults Dec-30-2021 (block: 13911677)", async function () {
@@ -337,4 +295,25 @@ describe("flash liquidator", function () {
             expect(new_vaults_message).to.be.equal("New vaults: 1073");
         })
     });
+
+    it("liquidates multihop ENS vaults on Jan-20-2022 (block: 14045343)", async function () {
+        this.timeout(1800e3);
+
+        await fork(14045343);
+        const [_owner, liquidator] = await deploy_flash_liquidator();
+
+        const liquidator_logs = await run_liquidator(tmp_root, liquidator);
+
+        const vault_to_be_auctioned = "b50e0c2ce9adb248f755540b";
+        let vault_is_liquidated = false;
+        for (const log_record of liquidator_logs) {
+            if (log_record["level"] == "INFO" && log_record["fields"]["message"] == "Submitted buy order") {
+                const vault_id = log_record["fields"]["vault_id"];
+                if (vault_id == `"${vault_to_be_auctioned}"`) {
+                    vault_is_liquidated = true;
+                }
+            }
+        }
+        expect(vault_is_liquidated).to.equal(true);
+    })
 });
