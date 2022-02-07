@@ -1,9 +1,9 @@
 use ethers::prelude::*;
-use yield_liquidator::{escalator::GeometricGasPrice, keeper::Keeper};
+use yield_liquidator::{escalator::GeometricGasPrice, keeper::Keeper, bindings::BaseIdType};
 
 use gumdrop::Options;
 use serde::Deserialize;
-use std::{convert::TryFrom, path::PathBuf, sync::Arc, time::Duration};
+use std::{convert::{TryFrom, TryInto}, path::PathBuf, sync::Arc, time::Duration, collections::HashMap};
 use tracing::info;
 use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber};
 
@@ -30,7 +30,7 @@ struct Opts {
     #[options(help = "polling interval (ms)", default = "1000")]
     interval: u64,
 
-    #[options(help = "Multicall batch size", default = "1000")]
+    #[options(help = "Multicall batch size", default = "500")]
     multicall_batch_size: usize,
 
     #[options(help = "the file to be used for persistence", default = "data.json")]
@@ -72,6 +72,8 @@ struct Config {
     flashloan: Address,
     #[serde(rename = "Multicall2")]
     multicall2: Address,
+    #[serde(rename = "BaseToDebtThreshold")]
+    base_to_debt_threshold: HashMap<String, String>
 }
 
 fn init_logger(use_json: bool) {
@@ -155,6 +157,11 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
     gas_escalator.every_secs = 5; // TODO: Make this be 90s
     gas_escalator.max_price = Some(U256::from(5000 * 1e9 as u64)); // 5k gwei
 
+    let base_to_debt_threshold: HashMap<BaseIdType, u128> = cfg.base_to_debt_threshold.iter()
+        .map(|(k, v)| { 
+            (hex::decode(k).unwrap().try_into().unwrap(), v.parse::<u128>().unwrap())
+        })
+        .collect();
     let mut keeper = Keeper::new(
         client,
         cfg.witch,
@@ -166,12 +173,14 @@ async fn run<P: JsonRpcClient + 'static>(opts: Opts, provider: Provider<P>) -> a
         gas_escalator,
         opts.bump_gas_delay,
         opts.target_collateral_offer,
+        base_to_debt_threshold,
         state,
         format!("{}.witch={:?}.flash={:?}", opts.instance_name, cfg.witch, cfg.flashloan)
     ).await?;
 
     if opts.one_shot {
         keeper.one_shot().await?;
+        info!("One shot done");
     } else {
         keeper.run(opts.file, opts.start_block).await?;
     }

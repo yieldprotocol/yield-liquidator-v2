@@ -4,7 +4,7 @@
 //! positions and observing their debt healthiness.
 use crate::{
     bindings::Cauldron, bindings::IMulticall2, bindings::IMulticall2Call, bindings::IlkIdType,
-    bindings::SeriesIdType, bindings::VaultIdType, bindings::Witch, Result,
+    bindings::SeriesIdType, bindings::VaultIdType, bindings::Witch, Result, cache::ImmutableCache,
 };
 
 use ethers::prelude::*;
@@ -46,6 +46,8 @@ pub struct Vault {
 
     pub level: I256,
 
+    pub debt: u128,
+
     pub ilk_id: IlkIdType,
 
     pub series_id: SeriesIdType,
@@ -76,8 +78,8 @@ impl<M: Middleware> Borrowers<M> {
     /// Gets any new borrowers which may have joined the system since we last
     /// made this call and then proceeds to get the latest account details for
     /// each user
-    #[instrument(skip(self), fields(self.instance_name))]
-    pub async fn update_vaults(&mut self, from_block: U64, to_block: U64) -> Result<(), M> {
+    #[instrument(skip(self, cache), fields(self.instance_name))]
+    pub async fn update_vaults(&mut self, from_block: U64, to_block: U64, cache: &mut ImmutableCache<M>) -> Result<(), M> {
         let span = debug_span!("monitoring");
         let _enter = span.enter();
 
@@ -107,7 +109,7 @@ impl<M: Middleware> Borrowers<M> {
             "Vaults collected"
         );
 
-        self.get_vault_info(&all_vaults)
+        self.get_vault_info(&all_vaults, cache)
             .await
             .iter()
             .zip(all_vaults)
@@ -125,6 +127,7 @@ impl<M: Middleware> Borrowers<M> {
                             vault_id: vault_id,
                             is_initialized: false,
                             is_collateralized: false,
+                            debt: 0,
                             level: I256::zero(),
                             under_auction: false,
                             series_id: [0, 0, 0, 0, 0, 0],
@@ -145,8 +148,8 @@ impl<M: Middleware> Borrowers<M> {
     /// First 4 multicalls will have multicall_batch_size * 3 == 40 internal calls
     /// Last multicall will have 2 * 3 = 6 internal calls
     ///
-    #[instrument(skip(self, vault_ids), fields(self.instance_name))]
-    pub async fn get_vault_info(&mut self, vault_ids: &[VaultIdType]) -> Vec<Result<Vault, M>> {
+    #[instrument(skip(self, vault_ids, cache), fields(self.instance_name))]
+    pub async fn get_vault_info(&mut self, vault_ids: &[VaultIdType], cache: &mut ImmutableCache<M>) -> Vec<Result<Vault, M>> {
         let mut ret: Vec<_> = stream::iter(vault_ids)
             // split to chunks
             .chunks(self.multicall_batch_size)
@@ -181,19 +184,18 @@ impl<M: Middleware> Borrowers<M> {
             if let Ok(single_vault) = single_vault_maybe {
                 if !single_vault.is_collateralized {
                     info!(vault_id=?hex::encode(single_vault.vault_id), "Potentially undercollaterized vault - checking if it's trivial");
-                    match self
-                        .is_trivial_vault(&single_vault.series_id, &single_vault.ilk_id)
+                    match cache.is_vault_ignored(single_vault.series_id, single_vault.ilk_id, single_vault.debt)
                         .await
                     {
                         Ok(true) => {
-                            info!(vault_id=?hex::encode(single_vault.vault_id), "Is trivial - marking as NOT undercollaterized");
+                            info!(vault_id=?hex::encode(single_vault.vault_id), "should be ignored - marking as NOT undercollaterized");
                             single_vault.is_collateralized = true;
                         }
                         Ok(false) => {
-                            info!(vault_id=?hex::encode(single_vault.vault_id), "Is not trivial");
+                            info!(vault_id=?hex::encode(single_vault.vault_id), "Is not ignorable");
                         }
                         Err(x) => {
-                            warn!(vault_id=?hex::encode(single_vault.vault_id), "Failed to check for triviality");
+                            warn!(vault_id=?hex::encode(single_vault.vault_id), "Failed to check if it's ignorable");
                             *single_vault_maybe = Err(x);
                         }
                     }
@@ -215,6 +217,7 @@ impl<M: Middleware> Borrowers<M> {
             .flat_map(|vault_id| {
                 trace!(vault_id=?vault_id, "Getting vault info");
                 let level_fn = self.cauldron.level(*vault_id);
+                let balances_fn = self.cauldron.balances(*vault_id);
                 let vault_data_fn = self.cauldron.vaults(*vault_id);
                 let auction_id_fn = self.liquidator.auctions(*vault_id);
 
@@ -222,6 +225,10 @@ impl<M: Middleware> Borrowers<M> {
                     IMulticall2Call {
                         target: self.cauldron.address(),
                         call_data: level_fn.calldata().unwrap().to_vec(),
+                    },
+                    IMulticall2Call {
+                        target: self.cauldron.address(),
+                        call_data: balances_fn.calldata().unwrap().to_vec(),
                     },
                     IMulticall2Call {
                         target: self.cauldron.address(),
@@ -245,13 +252,13 @@ impl<M: Middleware> Borrowers<M> {
     ) -> Result<Vec<Result<Vault, M>>, M> {
         return maybe_response.map(|response| {
             assert!(
-                response.len() == ids_chunk.len() * 3,
+                response.len() == ids_chunk.len() * 4,
                 "Unexpected results len: {}; expected: {}",
                 response.len(),
-                ids_chunk.len() * 3
+                ids_chunk.len() * 4
             );
             let x: Vec<Result<Vault, M>> = response
-                .chunks(3)
+                .chunks(4)
                 .zip(ids_chunk)
                 .map(|(single_vault_data, vault_id)| {
                     return self.get_vault_info_generate_vault(single_vault_data, &vault_id);
@@ -267,11 +274,12 @@ impl<M: Middleware> Borrowers<M> {
         single_vault_data: &[(bool, Vec<u8>)],
         vault_id: &VaultIdType,
     ) -> Result<Vault, M> {
-        assert!(single_vault_data.len() == 3);
+        assert!(single_vault_data.len() == 4);
         let (level_data_ok, level_data) = &single_vault_data[0];
-        let (vault_data_ok, vault_data) = &single_vault_data[1];
-        let (auction_id_data_ok, auction_id_data) = &single_vault_data[2];
-        if !level_data_ok || !vault_data_ok || !auction_id_data_ok {
+        let (balances_data_ok, balances_data) = &single_vault_data[1];
+        let (vault_data_ok, vault_data) = &single_vault_data[2];
+        let (auction_id_data_ok, auction_id_data) = &single_vault_data[3];
+        if !level_data_ok || !balances_data_ok || !vault_data_ok || !auction_id_data_ok {
             warn!(vault_id=?hex::encode(vault_id), vault_data=?single_vault_data, "Failed to get vault data");
             return Err(ContractError::ConstructorError {});
         }
@@ -281,6 +289,13 @@ impl<M: Middleware> Borrowers<M> {
                 .level(*vault_id)
                 .function
                 .decode_output(&level_data)
+                .unwrap(),
+        )?;
+        let balances = <(u128, u128) as Detokenize>::from_tokens(
+            self.cauldron
+                .balances(*vault_id)
+                .function
+                .decode_output(&balances_data)
                 .unwrap(),
         )?;
         let vault_data = <(Address, SeriesIdType, IlkIdType) as Detokenize>::from_tokens(
@@ -305,19 +320,10 @@ impl<M: Middleware> Borrowers<M> {
             is_initialized: true,
             is_collateralized: is_collateralized,
             level: level_int,
+            debt: balances.0,
             under_auction: auction_id.0 != Address::zero(),
             series_id: vault_data.1,
             ilk_id: vault_data.2,
         });
-    }
-
-    async fn is_trivial_vault(
-        &self,
-        series_id: &SeriesIdType,
-        ilk_id: &IlkIdType,
-    ) -> Result<bool, M> {
-        let (_, base_id, _) = self.cauldron.series(*series_id).call().await?;
-
-        return Ok(base_id == *ilk_id);
     }
 }

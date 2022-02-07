@@ -6,7 +6,7 @@ use crate::{
     bindings::{Cauldron, Witch, VaultIdType, FlashLiquidator},
     borrowers::{Vault},
     escalator::GeometricGasPrice,
-    merge, Result,
+    merge, Result, cache::ImmutableCache,
 };
 
 use ethers_core::types::transaction::eip2718::TypedTransaction;
@@ -223,12 +223,13 @@ impl<M: Middleware> Liquidator<M> {
     }
 
     /// Sends a bid for any of the liquidation auctions.
-    #[instrument(skip(self, from_block, to_block), fields(self.instance_name))]
+    #[instrument(skip(self, from_block, to_block, cache), fields(self.instance_name))]
     pub async fn buy_opportunities(
         &mut self,
         from_block: U64,
         to_block: U64,
         gas_price: U256,
+        cache: &mut ImmutableCache<M>
     ) -> Result<(), M> {
         let all_auctions = {
             let liquidations = self
@@ -249,7 +250,7 @@ impl<M: Middleware> Liquidator<M> {
             self.auctions.insert(vault_id, true);
 
             trace!(vault_id=?hex::encode(vault_id), "Buying");
-            match self.buy(vault_id, Instant::now(), gas_price).await {
+            match self.buy(vault_id, Instant::now(), gas_price, cache).await {
                 Ok(is_still_valid) => {
                     if !is_still_valid {
                         info!(vault_id=?hex::encode(vault_id), instance_name=self.instance_name.as_str(), "Removing no longer valid auction");
@@ -272,8 +273,9 @@ impl<M: Middleware> Liquidator<M> {
     /// Returns
     ///  - Result<false>: auction is no longer valid, we need to forget about it
     ///  - Result<true>: auction is still valid
-    #[instrument(skip(self), fields(self.instance_name))]
-    async fn buy(&mut self, vault_id: VaultIdType, now: Instant, gas_price: U256) -> Result<bool, M> {
+    #[instrument(skip(self, cache), fields(self.instance_name))]
+    async fn buy(&mut self, vault_id: VaultIdType, now: Instant, gas_price: U256,
+        cache: &mut ImmutableCache<M>) -> Result<bool, M> {
         // only iterate over users that do not have active auctions
         if let Some(pending_tx) = self.pending_auctions.get(&vault_id) {
             trace!(tx_hash = ?pending_tx.1, vault_id=?vault_id, "bid not confirmed yet");
@@ -281,8 +283,12 @@ impl<M: Middleware> Liquidator<M> {
         }
 
         // Get the vault's info
-        let auction = match self.get_auction(vault_id).await {
-            Ok(x) => x,
+        let auction = match self.get_auction(vault_id, cache).await {
+            Ok(Some(x)) => x,
+            Ok(None) => {
+                // auction is not valid
+                return Ok(false);
+            }
             Err(x) => {
                 warn!(vault_id=?hex::encode(vault_id), err=?x, "Failed to get auction");
                 return Ok(true);
@@ -416,7 +422,7 @@ impl<M: Middleware> Liquidator<M> {
                     }
                 };
             } else {
-                debug!(vault_id=?hex::encode(vault_id), "Vault is collateralized");
+                debug!(vault_id=?hex::encode(vault_id), "Vault is collateralized/ignored");
             }
         }
         Ok(())
@@ -442,8 +448,8 @@ impl<M: Middleware> Liquidator<M> {
         }
     }
 
-    async fn get_auction(&mut self, vault_id: VaultIdType) -> Result<Auction, M> {
-        let (_, _, ilk_id) = self.cauldron.vaults(vault_id).call().await?;
+    async fn get_auction(&mut self, vault_id: VaultIdType, cache: &mut ImmutableCache<M>) -> Result<Option<Auction>, M> {
+        let (_, series_id, ilk_id) = self.cauldron.vaults(vault_id).call().await?;
         let balances_fn = self.cauldron.balances(vault_id);
         let auction_fn = self.liquidator.auctions(vault_id);
 
@@ -464,6 +470,10 @@ impl<M: Middleware> Liquidator<M> {
         let ((art, _), (auction_owner, auction_start), (duration, initial_offer), ratio_u256):
             ((u128, u128), (Address, u32), (u32, u64), U256) = multicall.call().await?;
 
+        if cache.is_vault_ignored(series_id, ilk_id, art).await? {
+            info!(vault_id=?hex::encode(vault_id), "vault is trivial or ignored - not auctioning");
+            return Ok(None);
+        }
         let current_offer: u16 = 
             match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
                     Ok(x) => self.current_offer(x.as_secs(), 
@@ -494,13 +504,13 @@ impl<M: Middleware> Liquidator<M> {
             }
         };
 
-        Ok(Auction {
+        Ok(Some(Auction {
             under_auction: (auction_owner != Address::zero()),
             started: auction_start,
             debt: art,
             ratio_pct: ratio_pct,
             collateral_offer_is_good_enough: current_offer >= self.target_collateral_offer,
-        })
+        }))
 
     }
 }

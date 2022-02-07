@@ -1,6 +1,7 @@
 use crate::{
-    bindings::Witch,
+    bindings::{Witch, BaseIdType},
     borrowers::{Borrowers, VaultMap},
+    cache::ImmutableCache,
     escalator::GeometricGasPrice,
     liquidations::{AuctionMap, Liquidator},
     Result,
@@ -35,6 +36,7 @@ pub struct Keeper<M> {
     client: Arc<M>,
     last_block: U64,
 
+    cache: ImmutableCache<M>,
     borrowers: Borrowers<M>,
     liquidator: Liquidator<M>,
     instance_name: String,
@@ -54,6 +56,7 @@ impl<M: Middleware> Keeper<M> {
         gas_escalator: GeometricGasPrice,
         bump_gas_delay: u64,
         target_collateral_offer: u16,
+        base_to_debt_threshold: HashMap<BaseIdType, u128>,
         state: Option<State>,
         instance_name: String,
     ) -> Result<Keeper<M>, M> {
@@ -89,8 +92,17 @@ impl<M: Middleware> Keeper<M> {
         )
         .await;
 
+        let cache = ImmutableCache::new(
+            client.clone(), 
+            controller, 
+            HashMap::new(), 
+            base_to_debt_threshold,
+            instance_name.clone())
+        .await;
+
         Ok(Self {
             client,
+            cache,
             borrowers,
             liquidator,
             last_block,
@@ -242,7 +254,7 @@ impl<M: Middleware> Keeper<M> {
 
         // 2. update our dataset with the new block's data
         self.borrowers
-            .update_vaults(self.last_block, block_number)
+            .update_vaults(self.last_block, block_number, &mut self.cache)
             .await?;
 
         // 3. trigger the auction for any undercollateralized borrowers
@@ -252,7 +264,7 @@ impl<M: Middleware> Keeper<M> {
 
         // 4. try buying the ones which are worth buying
         self.liquidator
-            .buy_opportunities(self.last_block, block_number, gas_price)
+            .buy_opportunities(self.last_block, block_number, gas_price, &mut self.cache)
             .await?;
         Ok(())
     }
