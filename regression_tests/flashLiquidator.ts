@@ -24,8 +24,8 @@ const exec = promisify(exec_async);
 const logger: Logger = new Logger();
 
 const g_witch = "0x53C3760670f6091E1eC76B4dd27f73ba4CAd5061"
-const g_uni_factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 const g_uni_router = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
+const g_flash_loaner = '0xBA12222222228d8Ba445958a75a0704d566BF2C8'
 
 async function fork(block_number: number) {
     const alchemy_key = (await fs.readFile(join(__dirname, "..", '.alchemyKey'))).toString().trim()
@@ -49,7 +49,7 @@ async function deploy_flash_liquidator(): Promise<[SignerWithAddress, FlashLiqui
     const flFactory = await ethers.getContractFactory("FlashLiquidator") as FlashLiquidator__factory;
 
 
-    const liquidator = await flFactory.deploy(g_witch, g_uni_factory, g_uni_router) as FlashLiquidator
+    const liquidator = await flFactory.deploy(g_witch, g_uni_router, g_flash_loaner) as FlashLiquidator
     return [owner, liquidator];
 }
 

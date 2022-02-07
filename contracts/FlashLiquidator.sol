@@ -8,10 +8,11 @@ import "uniswapv3-oracle/contracts/uniswapv0.8/IUniswapV3Pool.sol";
 import "uniswapv3-oracle/contracts/uniswapv0.8/PoolAddress.sol";
 import "./UniswapTransferHelper.sol";
 import "./ISwapRouter.sol";
+import "./balancer/IFlashLoan.sol";
 
 
 // @notice This is the standard Flash Liquidator used with Yield liquidator bots for most collateral types
-contract FlashLiquidator {
+contract FlashLiquidator is IFlashLoanRecipient {
     using UniswapTransferHelper for address;
 
     // DAI  official token -- "otherToken" for UniV3Pool flash loan
@@ -22,29 +23,29 @@ contract FlashLiquidator {
 
     ICauldron public immutable cauldron;      // Yield Cauldron
     IWitch public immutable witch;            // Yield Witch
-    address public immutable factory;         // UniswapV3 pool factory
     ISwapRouter public immutable swapRouter;  // UniswapV3 swapRouter
+    IFlashLoan public immutable flashLoaner;    // balancer flashloan
+
+    bool public liquidating;                  // reentrance + rogue callback protection
 
     struct FlashCallbackData {
         bytes12 vaultId;
         address base;
         address collateral;
-        uint256 baseLoan;
         address baseJoin;
-        PoolAddress.PoolKey poolKey;
         address recipient;
     }
 
     // @dev Parameter order matters
     constructor(
         IWitch witch_,
-        address factory_,
-        ISwapRouter swapRouter_
+        ISwapRouter swapRouter_,
+        IFlashLoan flashLoaner_
     ) {
         witch = witch_;
         cauldron = witch_.cauldron();
-        factory = factory_;
         swapRouter = swapRouter_;
+        flashLoaner = flashLoaner_;
     }
 
     // @notice This is used by the bot to determine the current collateral to debt ratio
@@ -66,47 +67,28 @@ contract FlashLiquidator {
         return inkValue * 1e18 / accrued_debt;
     }
 
-    // @notice Returns the address of a valid Uniswap V3 Pool
-    // @dev from 'uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol'
-    // @param poolKey The identifying key of the V3 pool
-    // @return pool The V3 pool contract address
-    function _verifyCallback(PoolAddress.PoolKey memory poolKey)
-        internal
-        view
-        returns (IUniswapV3Pool pool)
-    {
-        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
-        require(msg.sender == address(pool), "Invalid caller");
-    }
-
-    // @param fee0 The fee from calling flash for token0
-    // @param fee1 The fee from calling flash for token1
-    // @param data The data needed in the callback passed as FlashCallbackData from `initFlash`
-    // @notice implements the callback called from flash
-    // @dev this fn should be overwritten by subclasses for non-standard collateral types
-    function uniswapV3FlashCallback(
-        uint256 fee0,
-        uint256 fee1,
-        bytes calldata data
-    ) external virtual {
-        // we only borrow 1 token
-        require(fee0 == 0 || fee1 == 0, "Two tokens were borrowed");
-        uint256 fee;
-        unchecked {
-            // Since one fee is always zero, this won't overflow
-            fee = fee0 + fee1;
-        }
+    // @notice flash loan callback, see IFlashLoanRecipient for details
+    // @param tokens tokens loaned
+    // @param amounts amounts of tokens loaned
+    // @param feeAmounts flash loan fees
+    function receiveFlashLoan(
+        address[] memory tokens,
+        uint256[] memory amounts,
+        uint256[] memory feeAmounts,
+        bytes memory userData) public virtual override {
+        require(liquidating && msg.sender == address(flashLoaner), "baka");
+        require(tokens.length == 1, "1 token expected");
 
         // decode and verify
-        FlashCallbackData memory decoded = abi.decode(data, (FlashCallbackData));
-        _verifyCallback(decoded.poolKey);
+        FlashCallbackData memory decoded = abi.decode(userData, (FlashCallbackData));
 
+        uint256 baseLoan = amounts[0];
         // liquidate the vault
-        decoded.base.safeApprove(decoded.baseJoin, decoded.baseLoan);
+        decoded.base.safeApprove(decoded.baseJoin, baseLoan);
         uint256 collateralReceived = witch.payAll(decoded.vaultId, 0);
 
         // sell the collateral
-        uint256 debtToReturn = decoded.baseLoan + fee;
+        uint256 debtToReturn = baseLoan + feeAmounts[0];
         decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
         uint256 debtRecovered = swapRouter.exactInputSingle(
             ISwapRouter.ExactInputSingleParams({
@@ -134,9 +116,12 @@ contract FlashLiquidator {
         decoded.base.safeTransfer(msg.sender, debtToReturn);
     }
 
-    // @notice Liquidates a vault with help from a Uniswap v3 flash loan
+    // @notice Liquidates a vault with help from a flash loan
     // @param vaultId The vault to liquidate
     function liquidate(bytes12 vaultId) external {
+        require(!liquidating, "go away baka");
+        liquidating = true;
+
         (, uint32 start) = witch.auctions(vaultId);
         require(start > 0, "Vault not under auction");
         DataTypes.Vault memory vault = cauldron.vaults(vaultId);
@@ -146,38 +131,22 @@ contract FlashLiquidator {
         uint128 baseLoan = cauldron.debtToBase(vault.seriesId, balances.art);
         address collateral = cauldron.assets(vault.ilkId);
 
-        // The flash loan only borrows one token, so the UniV3Pool that is selected only
-        // needs to have the baseToken in it. For the otherToken we prefer WETH or DAI
-        address otherToken = baseToken == WETH ? DAI : WETH;
-
-        // tokens in PoolKey must be ordered
-        bool ordered = (baseToken < otherToken);
-        PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({
-            token0: ordered ? baseToken : otherToken,
-            token1: ordered ? otherToken : baseToken,
-            fee: 500 // 0.3%
-        });
-        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
-
         // data for the callback to know what to do
         FlashCallbackData memory args = FlashCallbackData({
             vaultId: vaultId,
             base: baseToken,
             collateral: collateral,
-            baseLoan: baseLoan,
             baseJoin: address(witch.ladle().joins(series.baseId)),
-            poolKey: poolKey,
             recipient: msg.sender   // We will get front-run by generalized front-runners, this is desired as it reduces our gas costs
         });
 
+        address[] memory tokens = new address[](1);
+        tokens[0] = baseToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = baseLoan;
         // initiate flash loan, with the liquidation logic embedded in the flash loan callback
-        pool.flash(
-            address(this),
-            ordered ? baseLoan : 0,
-            ordered ? 0 : baseLoan,
-            abi.encode(
-                args
-            )
-        );
+        flashLoaner.flashLoan(this, tokens, amounts, abi.encode(args));
+
+        liquidating = false;
     }
 }
