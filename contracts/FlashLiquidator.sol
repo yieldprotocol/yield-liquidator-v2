@@ -7,7 +7,6 @@ import "@yield-protocol/vault-interfaces/IWitch.sol";
 import "uniswapv3-oracle/contracts/uniswapv0.8/IUniswapV3Pool.sol";
 import "uniswapv3-oracle/contracts/uniswapv0.8/PoolAddress.sol";
 import "./UniswapTransferHelper.sol";
-import "./ISwapRouter.sol";
 import "./balancer/IFlashLoan.sol";
 
 
@@ -23,7 +22,7 @@ contract FlashLiquidator is IFlashLoanRecipient {
 
     ICauldron public immutable cauldron;      // Yield Cauldron
     IWitch public immutable witch;            // Yield Witch
-    ISwapRouter public immutable swapRouter;  // UniswapV3 swapRouter
+    address public immutable swapRouter02;    // UniswapV3 swapRouter 02
     IFlashLoan public immutable flashLoaner;    // balancer flashloan
 
     bool public liquidating;                  // reentrance + rogue callback protection
@@ -34,17 +33,18 @@ contract FlashLiquidator is IFlashLoanRecipient {
         address collateral;
         address baseJoin;
         address recipient;
+        bytes swapCalldata;
     }
 
     // @dev Parameter order matters
     constructor(
         IWitch witch_,
-        ISwapRouter swapRouter_,
+        address swapRouter_,
         IFlashLoan flashLoaner_
     ) {
         witch = witch_;
         cauldron = witch_.cauldron();
-        swapRouter = swapRouter_;
+        swapRouter02 = swapRouter_;
         flashLoaner = flashLoaner_;
     }
 
@@ -89,36 +89,23 @@ contract FlashLiquidator is IFlashLoanRecipient {
 
         // sell the collateral
         uint256 debtToReturn = baseLoan + feeAmounts[0];
-        decoded.collateral.safeApprove(address(swapRouter), collateralReceived);
-        uint256 debtRecovered = swapRouter.exactInputSingle(
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: decoded.collateral,
-                tokenOut: decoded.base,
-                fee: 3000,  // can't use the same fee as the flash loan
-                           // because of reentrancy protection
-                recipient: address(this),
-                deadline: block.timestamp + 180,
-                amountIn: collateralReceived,
-                amountOutMinimum: debtToReturn, // bots will sandwich us and eat profits, we don't mind
-                sqrtPriceLimitX96: 0
-            })
-        );
+        decoded.collateral.safeApprove(address(swapRouter02), collateralReceived);
+        (bool ok, bytes memory swapReturnBytes) = swapRouter02.call(decoded.swapCalldata);
+        require(ok, "swap failed");
 
-        // if profitable pay profits to recipient
-        if (debtRecovered > debtToReturn) {
-            uint256 profit;
-            unchecked {
-                profit = debtRecovered - debtToReturn;
-            }
-            decoded.base.safeTransfer(decoded.recipient, profit);
-        }
+        // router can't access collateral anymore
+        decoded.collateral.safeApprove(address(swapRouter02), 0);
+
+        // take all remaining collateral
+        decoded.collateral.safeTransfer(decoded.recipient, IERC20(decoded.collateral).balanceOf(address(this)));
+
         // repay flash loan
         decoded.base.safeTransfer(msg.sender, debtToReturn);
     }
 
     // @notice Liquidates a vault with help from a flash loan
     // @param vaultId The vault to liquidate
-    function liquidate(bytes12 vaultId) external {
+    function liquidate(bytes12 vaultId, bytes calldata swapCalldata) external {
         require(!liquidating, "go away baka");
         liquidating = true;
 
@@ -137,6 +124,7 @@ contract FlashLiquidator is IFlashLoanRecipient {
             base: baseToken,
             collateral: collateral,
             baseJoin: address(witch.ladle().joins(series.baseId)),
+            swapCalldata: swapCalldata,
             recipient: msg.sender   // We will get front-run by generalized front-runners, this is desired as it reduces our gas costs
         });
 

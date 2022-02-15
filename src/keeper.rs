@@ -4,7 +4,7 @@ use crate::{
     cache::ImmutableCache,
     escalator::GeometricGasPrice,
     liquidations::{AuctionMap, Liquidator},
-    Result,
+    Result, swap_router::SwapRouter,
 };
 
 use ethers::prelude::*;
@@ -58,6 +58,7 @@ impl<M: Middleware> Keeper<M> {
         target_collateral_offer: u16,
         base_to_debt_threshold: HashMap<BaseIdType, u128>,
         state: Option<State>,
+        swap_router: SwapRouter,
         instance_name: String,
     ) -> Result<Keeper<M>, M> {
         let (vaults, auctions, last_block) = match state {
@@ -77,6 +78,7 @@ impl<M: Middleware> Keeper<M> {
         )
         .await;
         let liquidator = Liquidator::new(
+            swap_router,
             controller,
             liquidations,
             flashloan,

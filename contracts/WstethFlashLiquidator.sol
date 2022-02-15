@@ -32,7 +32,7 @@ contract WstethFlashLiquidator is FlashLiquidator {
 
     constructor(
         IWitch witch_,
-        ISwapRouter swapRouter_,
+        address swapRouter_,
         IFlashLoan flashLoaner_
     ) FlashLiquidator(
         witch_,
@@ -90,21 +90,10 @@ contract WstethFlashLiquidator is FlashLiquidator {
         if (decoded.base == WETH) {
             debtRecovered = ethReceived;
         } else {
-            ISwapRouter swapRouter_ = swapRouter;
+            address swapRouter_ = swapRouter02;
             WETH.safeApprove(address(swapRouter_), ethReceived);
-            debtRecovered = swapRouter_.exactInputSingle(
-                ISwapRouter.ExactInputSingleParams({
-                    tokenIn: WETH,
-                    tokenOut: decoded.base,
-                    fee: 3000,  // can't use the same fee as the flash loan
-                               // because of reentrancy protection
-                    recipient: address(this),
-                    deadline: block.timestamp + 180,
-                    amountIn: ethReceived,
-                    amountOutMinimum: debtToReturn, // bots will sandwich us and eat profits, we don't mind
-                    sqrtPriceLimitX96: 0
-                })
-            );
+            (bool ok, bytes memory swapReturnBytes) = swapRouter02.call(decoded.swapCalldata);
+            require(ok, "swap failed");
         }
 
         // if profitable pay profits to recipient

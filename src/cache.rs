@@ -1,7 +1,7 @@
 //! Immutable data cache
 //!
 use crate::{
-    bindings::{Cauldron}, bindings::{BaseIdType, IlkIdType},
+    bindings::{Cauldron}, bindings::{BaseIdType, IlkIdType, AssetIdType},
     bindings::SeriesIdType, Result,
 };
 
@@ -16,6 +16,8 @@ pub struct ImmutableCache<M> {
     pub cauldron: Cauldron<M>,
 
     pub series_to_base: HashMap<SeriesIdType, BaseIdType>,
+
+    pub asset_id_to_address: HashMap<AssetIdType, Address>,
 
     pub base_to_debt_threshold: HashMap<BaseIdType, u128>,
 
@@ -34,6 +36,7 @@ impl<M: Middleware> ImmutableCache<M> {
         ImmutableCache {
             cauldron: Cauldron::new(cauldron, client.clone()),
             series_to_base,
+            asset_id_to_address: HashMap::new(),
             base_to_debt_threshold,
             instance_name
         }
@@ -51,6 +54,19 @@ impl<M: Middleware> ImmutableCache<M> {
             None => panic!("can't find data for series {:}", hex::encode(series_id))
         }
     }
+
+    pub async fn get_or_fetch_asset_address(&mut self, asset_id: AssetIdType) -> Result<Address, M> {
+
+        if !self.asset_id_to_address.contains_key(&asset_id) {
+            debug!(asset_id=?hex::encode(asset_id), "fetching asset");
+            self.asset_id_to_address.insert(asset_id, self.cauldron.assets(asset_id).call().await?);
+        }
+        match self.asset_id_to_address.get(&asset_id) {
+            Some(x) => Ok(*x),
+            None => panic!("can't find data for asset {:}", hex::encode(asset_id))
+        }
+    }
+
 
     #[instrument(skip(self), fields(self.instance_name))]
     pub async fn is_vault_ignored(&mut self, series_id: SeriesIdType, ilk_id: IlkIdType, debt: u128) -> Result<bool, M> {

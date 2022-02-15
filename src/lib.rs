@@ -4,6 +4,7 @@ pub mod cache;
 pub mod escalator;
 pub mod keeper;
 pub mod liquidations;
+pub mod swap_router;
 
 use ethers::prelude::*;
 use std::collections::HashMap;

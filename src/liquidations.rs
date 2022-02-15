@@ -3,10 +3,10 @@
 //! This module is responsible for triggering and participating in a Auction's
 //! dutch auction
 use crate::{
-    bindings::{Cauldron, Witch, VaultIdType, FlashLiquidator},
+    bindings::{Cauldron, Witch, VaultIdType, FlashLiquidator, BaseIdType, IlkIdType},
     borrowers::{Vault},
     escalator::GeometricGasPrice,
-    merge, Result, cache::ImmutableCache,
+    merge, Result, cache::ImmutableCache, swap_router::SwapRouter,
 };
 
 use ethers_core::types::transaction::eip2718::TypedTransaction;
@@ -35,6 +35,9 @@ pub struct Liquidator<M> {
     /// We use multicall to batch together calls and have reduced stress on
     /// our RPC endpoint
     multicall: Multicall<M>,
+
+    // uniswap swap router
+    swap_router: SwapRouter,
 
     /// The minimum ratio (collateral/debt) to trigger liquidation
     min_ratio: u16,
@@ -65,6 +68,10 @@ pub struct Auction {
     /// The debt which can be repaid
     debt: u128,
 
+    base_id: BaseIdType,
+    
+    ilk_id: IlkIdType,
+
     ratio_pct: u16,
     collateral_offer_is_good_enough: bool,
 }
@@ -88,6 +95,7 @@ impl fmt::Display for TxType {
 impl<M: Middleware> Liquidator<M> {
     /// Constructor
     pub async fn new(
+        swap_router: SwapRouter,
         cauldron: Address,
         liquidator: Address,
         flashloan: Address,
@@ -110,6 +118,7 @@ impl<M: Middleware> Liquidator<M> {
             liquidator: Witch::new(liquidator, client.clone()),
             flash_liquidator: FlashLiquidator::new(flashloan, client.clone()),
             multicall,
+            swap_router,
             min_ratio,
             gas_boost,
             target_collateral_offer,
@@ -332,7 +341,18 @@ impl<M: Middleware> Liquidator<M> {
         let span = debug_span!("buying", vault_id=?vault_id, auction=?auction);
         let _enter = span.enter();
 
-        let raw_call = self.flash_liquidator.liquidate(vault_id)
+        let maybe_calldata = self.swap_router.build_swap_exact_out(
+            cache.get_or_fetch_asset_address(auction.ilk_id).await?, // in: collateral
+            cache.get_or_fetch_asset_address(auction.base_id).await?, // out:debt
+            U256::from(auction.debt)
+        ).await;
+        if let Err(x) = maybe_calldata {
+            warn!(vault_id=?hex::encode(vault_id), err=?x, "failed to generate swap calldata - will try later");
+            return Ok(true);
+        }
+        let swap_calldata = maybe_calldata.unwrap().calldata;
+
+        let raw_call = self.flash_liquidator.liquidate(vault_id, swap_calldata)
             // explicitly set 'from' field because we're about to call `estimate_gas`
             // If there's no `from` set, the estimated transaction is sent from 0x0 and reverts (tokens can't be transferred there)
             //
@@ -509,6 +529,8 @@ impl<M: Middleware> Liquidator<M> {
             started: auction_start,
             debt: art,
             ratio_pct: ratio_pct,
+            base_id: cache.get_or_fetch_base_id(series_id).await?,
+            ilk_id: ilk_id,
             collateral_offer_is_good_enough: current_offer >= self.target_collateral_offer,
         }))
 
