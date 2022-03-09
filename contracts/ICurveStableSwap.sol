@@ -17,4 +17,10 @@ interface ICurveStableSwap {
         uint256 dx,
         uint256 minDy
     ) external payable returns (uint256);
+
+    function remove_liquidity_one_coin(
+        uint256 _token_amount,
+        int128 i,
+        uint256 _min_amount
+    ) external returns (uint256);
 }
