@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// 3CRV: https://etherscan.io/address/0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490
-// Convex deposit contract: https://etherscan.io/address/0x689440f2Ff927E1f24c72F1087E1FAF471eCe1c8
-// cvx3CRV: https://etherscan.io/address/0x30d9410ed1d5da1f6c8391af5338c93ab8d4035c
 
 pragma solidity >=0.8.6;
 
 import '@yield-protocol/utils-v2/contracts/token/IERC20.sol';
 import './FlashLiquidator.sol';
 
-// @notice This is the Flash liquidator contract for CVX3CRV
-contract Cvx3CrvFlashLiquidator is FlashLiquidator {
+// @notice This is the Flash liquidator contract for Frax
+contract FraxFlashLiquidator is FlashLiquidator {
     using UniswapTransferHelper for address;
     using UniswapTransferHelper for IERC20;
     address public constant FRAX = 0x853d955aCEf822Db058eb8505911ED77F175b99e;
