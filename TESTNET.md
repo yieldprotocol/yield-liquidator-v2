@@ -15,6 +15,7 @@ git clone git@github.com:sblOWPCKCR/vault-v2.git
 git checkout liquidation
 yarn
 ```
+Then, `touch .alchemyKey` and add your alchemy api key to this file. 
 
 In one terminal, run hardhat node with mainnet fork: `yarn hardhat node --network hardhat`
 
