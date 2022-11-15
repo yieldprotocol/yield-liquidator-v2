@@ -12,6 +12,7 @@ use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, debug_span, info, instrument, trace, warn};
+use crate::bindings::ResultData;
 
 pub type VaultMap = HashMap<VaultIdType, Vault>;
 
@@ -224,19 +225,19 @@ impl<M: Middleware> Borrowers<M> {
                 return [
                     IMulticall2Call {
                         target: self.cauldron.address(),
-                        call_data: level_fn.calldata().unwrap().to_vec(),
+                        call_data: level_fn.calldata().unwrap(),//level_fn.calldata().unwrap().to_vec(),
                     },
                     IMulticall2Call {
                         target: self.cauldron.address(),
-                        call_data: balances_fn.calldata().unwrap().to_vec(),
+                        call_data: balances_fn.calldata().unwrap(),
                     },
                     IMulticall2Call {
                         target: self.cauldron.address(),
-                        call_data: vault_data_fn.calldata().unwrap().to_vec(),
+                        call_data: vault_data_fn.calldata().unwrap(),
                     },
                     IMulticall2Call {
                         target: self.liquidator.address(),
-                        call_data: auction_id_fn.calldata().unwrap().to_vec(),
+                        call_data: auction_id_fn.calldata().unwrap(),
                     },
                 ];
             })
@@ -248,7 +249,7 @@ impl<M: Middleware> Borrowers<M> {
     fn get_vault_info_chunk_parse_response(
         &self,
         ids_chunk: Vec<VaultIdType>,                     // TODO borrow
-        maybe_response: Result<Vec<(bool, Vec<u8>)>, M>, // TODO borrow
+        maybe_response: Result<Vec<ResultData>, M>, // TODO borrow
     ) -> Result<Vec<Result<Vault, M>>, M> {
         return maybe_response.map(|response| {
             assert!(
@@ -271,14 +272,14 @@ impl<M: Middleware> Borrowers<M> {
     /// Given individual responses from Multicall2, construct vault data
     fn get_vault_info_generate_vault(
         &self,
-        single_vault_data: &[(bool, Vec<u8>)],
+        single_vault_data: &[ResultData],
         vault_id: &VaultIdType,
     ) -> Result<Vault, M> {
         assert!(single_vault_data.len() == 4);
-        let (level_data_ok, level_data) = &single_vault_data[0];
-        let (balances_data_ok, balances_data) = &single_vault_data[1];
-        let (vault_data_ok, vault_data) = &single_vault_data[2];
-        let (auction_id_data_ok, auction_id_data) = &single_vault_data[3];
+        let ResultData {success:level_data_ok, return_data:level_data} = &single_vault_data[0];
+        let ResultData{success:balances_data_ok, return_data:balances_data} = &single_vault_data[1];
+        let ResultData {success:vault_data_ok, return_data:vault_data} = &single_vault_data[2];
+        let ResultData{success:auction_id_data_ok, return_data:auction_id_data} = &single_vault_data[3];
         if !level_data_ok || !balances_data_ok || !vault_data_ok || !auction_id_data_ok {
             warn!(vault_id=?hex::encode(vault_id), vault_data=?single_vault_data, "Failed to get vault data");
             return Err(ContractError::ConstructorError {});

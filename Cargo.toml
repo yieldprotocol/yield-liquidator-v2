@@ -7,8 +7,8 @@ default-run = "liquidator"
 
 [dependencies]
 anyhow = "1.0.32"
-ethers = { version = "0.5.2", features=["ws", "openssl"] }
-ethers-core = { version = "0.5.3" }
+ethers = { version = "1.0.0", features=["ws", "openssl"] }
+ethers-core = { version = "1.0.0" }
 exitcode = "1.1.2"
 futures-util = "0.3.19"
 hex = "0.4.3"
@@ -26,4 +26,6 @@ serde = "1.0.130"
 thiserror = "1.0.20"
 
 [build-dependencies]
-ethers = { version = "0.5.2", features = ["abigen"] }
+ethers = { version = "1.0.0", features = ["abigen"] }
+
+[patch.crates-io]

@@ -140,14 +140,14 @@ impl<M: Middleware> Liquidator<M> {
 
         let liquidator_client = self.liquidator.client();
         // Check all the pending liquidations
-        Liquidator::remove_or_bump_inner(now, liquidator_client, &self.gas_escalator,
+        Liquidator::remove_or_bump_inner(now, &liquidator_client, &self.gas_escalator,
             &mut self.pending_liquidations, "liquidations",
             self.instance_name.as_ref(),
-            self.bump_gas_delay).await?;
-        Liquidator::remove_or_bump_inner(now, liquidator_client, &self.gas_escalator,
+            self.bump_gas_delay).await;
+        Liquidator::remove_or_bump_inner(now, &liquidator_client, &self.gas_escalator,
             &mut self.pending_auctions, "auctions",
             self.instance_name.as_ref(),
-            self.bump_gas_delay).await?;
+            self.bump_gas_delay).await;
 
         Ok(())
     }
@@ -352,7 +352,7 @@ impl<M: Middleware> Liquidator<M> {
         }
         let swap_calldata = maybe_calldata.unwrap().calldata;
 
-        let raw_call = self.flash_liquidator.liquidate(vault_id, swap_calldata)
+        let raw_call = self.flash_liquidator.liquidate(vault_id, swap_calldata.into())
             // explicitly set 'from' field because we're about to call `estimate_gas`
             // If there's no `from` set, the estimated transaction is sent from 0x0 and reverts (tokens can't be transferred there)
             //
@@ -481,14 +481,14 @@ impl<M: Middleware> Liquidator<M> {
         let multicall = self
             .multicall
             .clear_calls()
-            .add_call(balances_fn)
-            .add_call(auction_fn)
-            .add_call(self.liquidator.ilks(ilk_id))
-            .add_call(self.flash_liquidator.collateral_to_debt_ratio(vault_id))
+            .add_call(balances_fn,true)
+            .add_call(auction_fn,true)
+            .add_call(self.liquidator.ilks(ilk_id),true)
+            .add_call(self.flash_liquidator.collateral_to_debt_ratio(vault_id),true)
             ;
 
         let ((art, _), (auction_owner, auction_start), (duration, initial_offer), ratio_u256):
-            ((u128, u128), (Address, u32), (u32, u64), U256) = multicall.call().await?;
+            ((u128, u128), (Address, u32), (u32, u64), U256) = multicall.call().await.unwrap();
 
         if cache.is_vault_ignored(series_id, ilk_id, art).await? {
             info!(vault_id=?hex::encode(vault_id), "vault is trivial or ignored - not auctioning");
